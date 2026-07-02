@@ -4,7 +4,8 @@ import os
 from openai import AsyncOpenAI
 from graph.model import Block, ProjectGraph
 
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
 SYSTEM_PROMPT = """Eres un experto en arquitectura de sistemas y SysML.
 Analiza la información estructural de un proyecto Enterprise Architect y 
 responde en español de forma clara, técnica y concisa.
@@ -18,8 +19,11 @@ para un generador de imágenes (DALL-E / Midjourney style)."""
 
 class Summarizer:
     def __init__(self):
-        api_key = os.getenv("OPENAI_API_KEY")
-        self.client = AsyncOpenAI(api_key=api_key) if api_key else None
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        ) if api_key else None
 
     async def summarize_block(self, block: Block, graph: ProjectGraph) -> dict:
         context = graph.build_block_context(block)
