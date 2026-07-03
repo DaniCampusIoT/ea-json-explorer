@@ -117,12 +117,13 @@ class Summarizer:
         image_prompt = prompt_response.choices[0].message.content[:900]
 
         # Paso 2: gpt-image-1 genera la imagen
+        # Calidades válidas: 'low', 'medium', 'high', 'auto'
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
             model="gpt-image-1",
             prompt=image_prompt,
             size="1024x1024",
-            quality="standard",
+            quality="medium",
             n=1,
         )
 
