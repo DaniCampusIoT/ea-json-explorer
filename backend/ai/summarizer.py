@@ -1,7 +1,7 @@
 """Módulo IA: genera resúmenes, fichas y prompts visuales usando OpenAI o Groq."""
 from __future__ import annotations
 import os
-import base64
+import re
 from openai import AsyncOpenAI
 from graph.model import Block, ProjectGraph
 
@@ -20,29 +20,104 @@ Cuando se te pida un resumen de bloque, incluye siempre:
 2. Relación con otros bloques (dependencias).
 3. Puntos críticos o huecos de documentación.
 Cuando se te pida un prompt visual, genera una descripción detallada 
-para un generador de imágenes (DALL-E / Midjourney style)."""
+para un generador de imágenes."""
 
-IMAGE_PROMPT_STYLE = """
-You are a technical art director. Generate a vivid English prompt for gpt-image-1 to create a 
-high-quality INDUSTRIAL ILLUSTRATION of an embedded electronics subsystem.
 
-Style rules (strict):
-- Style: ultra-detailed industrial concept art, NOT a schematic or block diagram
-- Perspective: dramatic 3/4 isometric view, cinematic lighting
-- Aesthetic: dark matte PCB board (#0d1117) with glowing teal (#00e5cc) trace lines, 
-  cool-white SMD components, subtle blue ambient light, sharp shadows
-- Components must look like REAL electronic hardware: MCU chips, connectors, antennas, 
-  harness cables, junction boxes — rendered as physical 3D objects on a PCB
-- NO text labels, NO callouts, NO floating words anywhere in the image
-- NO schematic symbols, NO box-and-arrow diagrams
-- The image must feel like a product render from a high-end engineering studio
-- Mood: precise, technical, futuristic but grounded in real hardware
-- Render quality: 8K photorealistic, ray-traced reflections on chip surfaces
+# ---------------------------------------------------------------------------
+# Port → physical connector mapping
+# ---------------------------------------------------------------------------
+_PORT_MAP: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'850[Vv]|HV|High.?Volt|Power.?In|Power.?Out|PWR', re.I),
+     "high-voltage screw terminal block (orange, 3-pin)"),
+    (re.compile(r'CAN.?FD|CAN', re.I),
+     "DB9 male connector (CAN bus)"),
+    (re.compile(r'SPI|RS.?422|RS.?485|UART|SERIAL', re.I),
+     "2.54 mm pin header (6-pin)"),
+    (re.compile(r'USB', re.I),
+     "USB-C female receptacle"),
+    (re.compile(r'PCI', re.I),
+     "PCIe edge connector"),
+    (re.compile(r'ANT.?GPS|GPS', re.I),
+     "SMA female GPS stub antenna (black, 50mm)"),
+    (re.compile(r'ANT.?RFID|RFID', re.I),
+     "SMA female RFID stub antenna (grey, 40mm)"),
+    (re.compile(r'ANT.?Telemetry|Telemetry', re.I),
+     "SMA female telemetry whip antenna (white, 60mm)"),
+    (re.compile(r'ANT|Antenna', re.I),
+     "SMA female stub antenna"),
+    (re.compile(r'Light|LED', re.I),
+     "JST-PH 4-pin white connector"),
+    (re.compile(r'Brush|BWS', re.I),
+     "Molex MicroFit 2-pin connector"),
+    (re.compile(r'Harness', re.I),
+     "automotive wiring harness multi-pin connector (black, 12-pin)"),
+    (re.compile(r'JB[LR]|Junction', re.I),
+     "sealed junction box connector (IP67, 8-pin)"),
+    (re.compile(r'ETH|Ethernet|RJ45', re.I),
+     "RJ45 shielded Ethernet jack"),
+    (re.compile(r'I2C|TWI', re.I),
+     "2.54 mm pin header (4-pin)"),
+]
 
-Base the component layout ONLY on the parts and ports listed in the context below.
-Do NOT invent components. Map each named part to a plausible real hardware form factor.
-Maximum 950 characters for the final prompt.
-"""
+
+def _map_ports_to_physical(port_names: list[str]) -> list[dict]:
+    """Return list of {name, physical} for each port."""
+    result = []
+    for name in port_names:
+        physical = "generic 2.54 mm header connector"
+        for pattern, description in _PORT_MAP:
+            if pattern.search(name):
+                physical = description
+                break
+        result.append({"name": name, "physical": physical})
+    return result
+
+
+def _extract_ports(context: str) -> list[str]:
+    """Heuristic extraction of port names from the block context string."""
+    ports: list[str] = []
+    for line in context.splitlines():
+        line = line.strip()
+        if line.startswith("- ") and any(kw in line.lower() for kw in
+                                         ["port", "puerto", "interface", "ant", "can",
+                                          "spi", "usb", "pci", "gps", "rfid",
+                                          "power", "light", "brush", "harness",
+                                          "850", "jb", "eth"]):
+            name = line.lstrip("- ").split(":")[0].strip()
+            if name:
+                ports.append(name)
+    return ports
+
+
+def _build_image_prompt(block_name: str, ports_physical: list[dict],
+                        part_names: list[str]) -> str:
+    """Compose the final image generation prompt."""
+
+    connector_lines = "\n".join(
+        f'  - {p["name"]}: rendered as a {p["physical"]}, '
+        f'with white silkscreen label "{p["name"]}" printed on the PCB surface beside it'
+        for p in ports_physical
+    ) or "  - (no named ports)"
+
+    parts_str = ", ".join(part_names[:12]) if part_names else "(no sub-parts)"
+
+    prompt = (
+        f"Ultra-detailed photorealistic 3D render of an embedded electronics PCB module named '{block_name}'. "
+        f"Dark matte green PCB (#0d1117) viewed at a dramatic 3/4 isometric angle with cinematic lighting. "
+        f"Glowing teal (#00e5cc) PCB trace lines visible on the board surface. "
+        f"Cool-white SMD components (resistors, capacitors, inductors) scattered across the board. "
+        f"Central area populated by these sub-modules as physical IC packages: {parts_str}. "
+        f"Along the PCB edges, the following physical connectors are mounted:\n"
+        f"{connector_lines}\n"
+        f"Each connector label is silkscreen-printed directly onto the PCB soldermask in small, clean, "
+        f"white sans-serif text right beside the connector body — NOT floating in air, NOT as a callout, "
+        f"ONLY as PCB silkscreen text. "
+        f"Antennas protrude vertically from the board edge. "
+        f"Ray-traced reflections on chip surfaces. Soft blue ambient light. Sharp cast shadows. "
+        f"No schematic symbols. No block diagrams. No speech bubbles. No external text overlays. "
+        f"8K photorealistic product render quality."
+    )
+    return prompt[:1000]
 
 
 class Summarizer:
@@ -91,27 +166,13 @@ class Summarizer:
 
     async def generate_image_prompt(self, block: Block, graph: ProjectGraph) -> str:
         context = graph.build_block_context(block)
-        if not self.client:
-            return f"Diagrama técnico del bloque '{block.name}' con sus subcomponentes y conexiones."
-
-        prompt = (
-            f"{context}\n\n"
-            "Genera un prompt detallado en inglés para crear una imagen técnica de este bloque. "
-            "El prompt debe describir: estilo visual (diagrama técnico / isométrico industrial), "
-            "elementos principales, relaciones visibles, paleta de colores sugerida y nivel de detalle."
-        )
-        response = await self.client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.6,
-        )
-        return response.choices[0].message.content
+        ports = _extract_ports(context)
+        ports_physical = _map_ports_to_physical(ports)
+        part_names = [p.name for p in getattr(block, "parts", [])]
+        return _build_image_prompt(block.name, ports_physical, part_names)
 
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
-        """Genera imagen con gpt-image-1 en calidad high. Devuelve data URI base64."""
+        """Genera imagen con gpt-image-1 quality=high. Devuelve data URI base64."""
 
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
@@ -120,22 +181,26 @@ class Summarizer:
 
         context = graph.build_block_context(block)
 
-        # Paso 1: LLM genera prompt visual de ilustración industrial (sin texto ni etiquetas)
-        prompt_request = (
-            f"{IMAGE_PROMPT_STYLE}\n\n"
-            f"Block context:\n{context}"
-        )
-        prompt_response = await self.client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "You are a technical art director. Output only the image generation prompt, nothing else."},
-                {"role": "user", "content": prompt_request},
-            ],
-            temperature=0.4,
-        )
-        image_prompt = prompt_response.choices[0].message.content.strip()[:950]
+        # Extraer puertos y partes del contexto
+        ports = _extract_ports(context)
+        if not ports:
+            # Fallback: pedirle al LLM que extraiga los puertos
+            extract_response = await self.client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": "Extract port/interface names only. Return one name per line, no explanations."},
+                    {"role": "user", "content": f"Block context:\n{context}\n\nList all port and interface names:"},
+                ],
+                temperature=0.0,
+            )
+            raw = extract_response.choices[0].message.content
+            ports = [ln.strip().lstrip("-• ") for ln in raw.splitlines() if ln.strip()]
 
-        # Paso 2: gpt-image-1 genera la imagen en base64, calidad high
+        ports_physical = _map_ports_to_physical(ports)
+        part_names = [p.name for p in getattr(block, "parts", [])]
+        image_prompt = _build_image_prompt(block.name, ports_physical, part_names)
+
+        # gpt-image-1 genera la imagen en base64, calidad high
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
             model="gpt-image-1",
@@ -145,7 +210,6 @@ class Summarizer:
             n=1,
         )
 
-        # gpt-image-1 devuelve b64_json, no url
         img_data = image_response.data[0]
         if getattr(img_data, "b64_json", None):
             image_src = f"data:image/png;base64,{img_data.b64_json}"
