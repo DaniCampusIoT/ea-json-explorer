@@ -69,8 +69,8 @@ _PORT_MAP: list[tuple[re.Pattern, str]] = [
      "USB-C female receptacle"),
     (re.compile(r'PCI', re.I),
      "PCIe edge connector"),
-    # Ethernet
-    (re.compile(r'ETH|Ethernet|RJ45', re.I),
+    # Ethernet / LAN
+    (re.compile(r'ETH|Ethernet|RJ45|LAN', re.I),
      "RJ45 shielded Ethernet jack"),
     # Actuators / peripherals
     (re.compile(r'Light|LED', re.I),
@@ -87,20 +87,27 @@ _DEFAULT_CONNECTOR = "generic 2.54 mm header connector (2-pin)"
 
 
 # ---------------------------------------------------------------------------
-# Port extraction helpers
+# Port extraction — uses graph directly (ground truth)
 # ---------------------------------------------------------------------------
 
-def _ports_from_block(block: Block) -> list[str]:
-    """Extract port names directly from the Block model."""
-    raw: list[str] = []
-    for attr in ("ports", "interfaces", "owned_ports"):
-        items = getattr(block, attr, None)
-        if items:
-            for item in items:
-                name = getattr(item, "name", None) or str(item)
-                if name:
-                    raw.append(name.strip())
-    return list(dict.fromkeys(raw))  # deduplicate preserving order
+def _ports_from_graph(block: Block, graph: ProjectGraph) -> list[str]:
+    """Resolve block.port_ids against graph.ports — the only source of truth."""
+    names: list[str] = []
+    for pid in block.port_ids:
+        port = graph.ports.get(pid)
+        if port and port.name:
+            names.append(port.name.strip())
+    return list(dict.fromkeys(names))  # deduplicate, preserve order
+
+
+def _parts_from_graph(block: Block, graph: ProjectGraph) -> list[str]:
+    """Resolve block.part_ids against graph.parts."""
+    names: list[str] = []
+    for pid in block.part_ids:
+        part = graph.parts.get(pid)
+        if part and part.name:
+            names.append(part.name.strip())
+    return list(dict.fromkeys(names))
 
 
 def _fuzzy_match(candidate: str, valid: list[str], threshold: float = 0.75) -> str | None:
@@ -114,17 +121,13 @@ def _fuzzy_match(candidate: str, valid: list[str], threshold: float = 0.75) -> s
     return best if best_score >= threshold else None
 
 
-def _validate_ports(llm_ports: list[str], real_ports: list[str]) -> list[str]:
+def _validate_llm_ports(llm_ports: list[str], real_ports: list[str]) -> list[str]:
     """
-    Validate LLM-extracted ports against the real port list.
-    - Exact matches pass directly.
-    - Fuzzy matches above threshold are corrected to the real name.
-    - Hallucinated names are dropped.
-    Returns validated list (may include unmatched real ports as fallback).
+    Cross-check LLM output against real ports:
+    - Exact or fuzzy match → use real name
+    - Hallucination (no match) → discard
+    - Real ports not found by LLM → append at end
     """
-    if not real_ports:
-        return llm_ports  # nothing to validate against
-
     validated: list[str] = []
     used: set[str] = set()
 
@@ -134,7 +137,6 @@ def _validate_ports(llm_ports: list[str], real_ports: list[str]) -> list[str]:
             validated.append(real)
             used.add(real)
 
-    # Add any real ports not picked up by the LLM
     for rp in real_ports:
         if rp not in used:
             validated.append(rp)
@@ -168,7 +170,7 @@ def _build_image_prompt(block_name: str, ports: list[str], part_names: list[str]
         f"Glowing teal (#00e5cc) PCB trace lines. Cool-white SMD passives across the board. "
         f"Central IC packages representing: {parts_str}. "
         f"Physical connectors mounted on PCB edges:\n{connector_lines}\n"
-        f"Labels are silkscreen-printed ON the PCB soldermask right next to each connector — "
+        f"Each label is silkscreen-printed ON the PCB soldermask right next to each connector — "
         f"small clean white sans-serif text, NOT floating in air, NOT callout bubbles. "
         f"Antennas protrude vertically from board edge. "
         f"Ray-traced reflections on chip surfaces. Soft blue ambient light. Sharp shadows. "
@@ -196,45 +198,58 @@ class Summarizer:
             ) if api_key else None
 
     # ------------------------------------------------------------------
-    async def _extract_ports_hybrid(self, block: Block, context: str) -> list[str]:
+    async def _get_validated_ports(
+        self, block: Block, graph: ProjectGraph, context: str
+    ) -> list[str]:
         """
-        Hybrid port extraction:
-        1. Pull real port names directly from the Block model (ground truth).
-        2. Ask LLM to identify port names from the context string.
-        3. Validate LLM output against ground truth using fuzzy matching.
-        4. Return merged, deduplicated, validated list.
+        Hybrid pipeline:
+        1. Ground truth from graph (always runs, zero cost)
+        2. LLM enrichment (optional, catches ports missing from graph index)
+        3. Fuzzy validator — LLM output must match ground truth or is discarded
         """
-        real_ports = _ports_from_block(block)
+        real_ports = _ports_from_graph(block, graph)
 
-        if self.client:
-            try:
-                response = await self.client.chat.completions.create(
-                    model=MODEL,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": (
-                                "You are a precise technical extractor. "
-                                "Given a SysML block context, list ONLY the port and interface names. "
-                                "Output one name per line. No explanations, no prefixes, no bullets."
-                            ),
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Block context:\n{context}\n\nList all port and interface names:",
-                        },
-                    ],
-                    temperature=0.0,
-                )
-                raw = response.choices[0].message.content
-                llm_ports = [
-                    ln.strip().lstrip("-•* ") for ln in raw.splitlines() if ln.strip()
-                ]
-                return _validate_ports(llm_ports, real_ports)
-            except Exception:
-                pass  # fall through to ground truth only
+        # If the graph already has all ports, skip the LLM call
+        if real_ports:
+            return real_ports  # graph is complete — trust it directly
 
-        return real_ports
+        # Fallback: graph has no ports — ask LLM, then validate against context names
+        if not self.client:
+            return real_ports
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a precise technical extractor. "
+                            "Given a SysML block context, list ONLY the port and interface names "
+                            "exactly as they appear in the text. "
+                            "Output one name per line. No explanations, no prefixes, no bullets."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Block context:\n{context}\n\nList all port and interface names:",
+                    },
+                ],
+                temperature=0.0,
+            )
+            raw = response.choices[0].message.content
+            llm_ports = [
+                ln.strip().lstrip("-•* ") for ln in raw.splitlines() if ln.strip()
+            ]
+            # Validate against names found literally in the context string
+            context_names = [
+                ln.strip().lstrip("- ").split(":")[0].strip()
+                for ln in context.splitlines()
+                if ln.strip().startswith("-")
+            ]
+            return _validate_llm_ports(llm_ports, context_names)
+        except Exception:
+            return real_ports
 
     # ------------------------------------------------------------------
     async def summarize_block(self, block: Block, graph: ProjectGraph) -> dict:
@@ -270,8 +285,8 @@ class Summarizer:
     # ------------------------------------------------------------------
     async def generate_image_prompt(self, block: Block, graph: ProjectGraph) -> str:
         context = graph.build_block_context(block)
-        ports = await self._extract_ports_hybrid(block, context)
-        part_names = [p.name for p in getattr(block, "parts", [])]
+        ports = await self._get_validated_ports(block, graph, context)
+        part_names = _parts_from_graph(block, graph)
         return _build_image_prompt(block.name, ports, part_names)
 
     # ------------------------------------------------------------------
@@ -284,8 +299,8 @@ class Summarizer:
             return {"error": "OPENAI_API_KEY no configurada"}
 
         context = graph.build_block_context(block)
-        ports = await self._extract_ports_hybrid(block, context)
-        part_names = [p.name for p in getattr(block, "parts", [])]
+        ports = await self._get_validated_ports(block, graph, context)
+        part_names = _parts_from_graph(block, graph)
         image_prompt = _build_image_prompt(block.name, ports, part_names)
 
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
