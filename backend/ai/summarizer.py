@@ -88,7 +88,7 @@ class Summarizer:
         return response.choices[0].message.content
 
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
-        """Genera imagen DALL-E 3 basada estrictamente en los datos reales del bloque."""
+        """Genera imagen con gpt-image-1 basada en los datos reales del bloque."""
 
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
@@ -100,14 +100,14 @@ class Summarizer:
         # Paso 1: LLM genera prompt visual fiel a los datos reales
         prompt_request = (
             f"{context}\n\n"
-            "Genera un prompt en inglés para DALL-E 3 que represente visualmente este bloque. "
+            "Genera un prompt en inglés para un modelo de generación de imágenes que represente visualmente este bloque. "
             "IMPORTANTE: usa ÚNICAMENTE los puertos, partes y conexiones que aparecen en el contexto anterior. "
             "No inventes componentes. El estilo debe ser: diagrama técnico isométrico industrial, "
             "fondo oscuro #1a1a2e, líneas teal y blanco, etiquetas legibles con los nombres reales. "
             "Máximo 900 caracteres."
         )
         prompt_response = await self.client.chat.completions.create(
-            model=MODEL,  # <- corregido: variable global, no self.model
+            model=MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt_request},
@@ -116,10 +116,10 @@ class Summarizer:
         )
         image_prompt = prompt_response.choices[0].message.content[:900]
 
-        # Paso 2: DALL-E 3 genera la imagen
+        # Paso 2: gpt-image-1 genera la imagen
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
-            model="dall-e-3",
+            model="gpt-image-1",
             prompt=image_prompt,
             size="1024x1024",
             quality="standard",
