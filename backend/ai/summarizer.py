@@ -4,7 +4,12 @@ import os
 from openai import AsyncOpenAI
 from graph.model import Block, ProjectGraph
 
-MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").lower()
+
+if AI_PROVIDER == "groq":
+    MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+else:
+    MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
 SYSTEM_PROMPT = """Eres un experto en arquitectura de sistemas y SysML.
 Analiza la información estructural de un proyecto Enterprise Architect y 
@@ -19,11 +24,17 @@ para un generador de imágenes (DALL-E / Midjourney style)."""
 
 class Summarizer:
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
-        self.client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://api.groq.com/openai/v1",
-        ) if api_key else None
+        if AI_PROVIDER == "groq":
+            api_key = os.getenv("GROQ_API_KEY")
+            self.client = AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.groq.com/openai/v1",
+            ) if api_key else None
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            self.client = AsyncOpenAI(
+                api_key=api_key,
+            ) if api_key else None
 
     async def summarize_block(self, block: Block, graph: ProjectGraph) -> dict:
         context = graph.build_block_context(block)
@@ -75,6 +86,54 @@ class Summarizer:
             temperature=0.6,
         )
         return response.choices[0].message.content
+
+    async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
+        """Genera imagen DALL-E 3 basada estrictamente en los datos reales del bloque."""
+        
+        # Solo OpenAI tiene DALL-E — verificar que no sea Groq
+        if AI_PROVIDER != "openai":
+            return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
+        if not self.client:
+            return {"error": "OPENAI_API_KEY no configurada"}
+
+        # 1. Construir prompt desde datos REALES del grafo (sin inventar)
+        context = graph.build_block_context(block)
+
+        # 2. Pedir al LLM que genere un prompt visual fiel a los datos
+        prompt_request = (
+            f"{context}\n\n"
+            "Genera un prompt en inglés para DALL-E 3 que represente visualmente este bloque. "
+            "IMPORTANTE: usa ÚNICAMENTE los puertos, partes y conexiones que aparecen en el contexto anterior. "
+            "No inventes componentes. El estilo debe ser: diagrama técnico isométrico industrial, "
+            "fondo oscuro #1a1a2e, líneas teal y blanco, etiquetas legibles con los nombres reales. "
+            "Máximo 900 caracteres."
+        )
+        prompt_response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt_request},
+            ],
+            temperature=0.3,
+        )
+        image_prompt = prompt_response.choices[0].message.content[:900]
+
+        # 3. Generar imagen con DALL-E 3
+        image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        image_response = await image_client.images.generate(
+            model="dall-e-3",
+            prompt=image_prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+        )
+
+        return {
+            "block_id": block.id,
+            "block_name": block.name,
+            "image_url": image_response.data[0].url,
+            "prompt_used": image_prompt,
+        }
 
     async def answer_question(self, question: str, graph: ProjectGraph) -> str:
         project_ctx = graph.build_project_summary()

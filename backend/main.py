@@ -108,6 +108,16 @@ async def block_image_prompt(block_id: str):
     prompt = await _summarizer.generate_image_prompt(block, _graph)
     return {"prompt": prompt}
 
+@app.get("/api/blocks/{block_id}/image", summary="Genera imagen DALL-E del bloque")
+async def block_image(block_id: str):
+    _require_graph()
+    block = _graph.blocks.get(block_id)
+    if not block:
+        raise HTTPException(status_code=404, detail="Bloque no encontrado")
+    result = await _summarizer.generate_image(block, _graph)
+    if "error" in result:
+        raise HTTPException(status_code=503, detail=result["error"])
+    return result
 
 @app.post("/api/ask", summary="Consulta libre IA")
 async def ask(body: dict):
