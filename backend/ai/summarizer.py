@@ -1,4 +1,4 @@
-"""Módulo IA: genera resúmenes, fichas y prompts visuales usando OpenAI."""
+"""Módulo IA: genera resúmenes, fichas y prompts visuales usando OpenAI o Groq."""
 from __future__ import annotations
 import os
 from openai import AsyncOpenAI
@@ -40,7 +40,7 @@ class Summarizer:
         context = graph.build_block_context(block)
         project_ctx = graph.build_project_summary()
         if not self.client:
-            return {"error": "OPENAI_API_KEY no configurada", "context": context}
+            return {"error": f"Proveedor IA no configurado: {AI_PROVIDER}", "context": context}
 
         prompt = (
             f"Contexto del proyecto: {project_ctx}\n\n"
@@ -89,17 +89,15 @@ class Summarizer:
 
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
         """Genera imagen DALL-E 3 basada estrictamente en los datos reales del bloque."""
-        
-        # Solo OpenAI tiene DALL-E — verificar que no sea Groq
+
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
         if not self.client:
             return {"error": "OPENAI_API_KEY no configurada"}
 
-        # 1. Construir prompt desde datos REALES del grafo (sin inventar)
         context = graph.build_block_context(block)
 
-        # 2. Pedir al LLM que genere un prompt visual fiel a los datos
+        # Paso 1: LLM genera prompt visual fiel a los datos reales
         prompt_request = (
             f"{context}\n\n"
             "Genera un prompt en inglés para DALL-E 3 que represente visualmente este bloque. "
@@ -109,7 +107,7 @@ class Summarizer:
             "Máximo 900 caracteres."
         )
         prompt_response = await self.client.chat.completions.create(
-            model=self.model,
+            model=MODEL,  # <- corregido: variable global, no self.model
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt_request},
@@ -118,7 +116,7 @@ class Summarizer:
         )
         image_prompt = prompt_response.choices[0].message.content[:900]
 
-        # 3. Generar imagen con DALL-E 3
+        # Paso 2: DALL-E 3 genera la imagen
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
             model="dall-e-3",
@@ -137,13 +135,12 @@ class Summarizer:
 
     async def answer_question(self, question: str, graph: ProjectGraph) -> str:
         project_ctx = graph.build_project_summary()
-        # Contexto de todos los bloques (top 20 por nombre para no saturar el contexto)
         top_blocks = list(graph.blocks.values())[:20]
         blocks_ctx = "\n---\n".join(
             graph.build_block_context(b) for b in top_blocks
         )
         if not self.client:
-            return "OPENAI_API_KEY no configurada."
+            return f"Proveedor IA no configurado: {AI_PROVIDER}"
 
         prompt = (
             f"Proyecto: {project_ctx}\n\n"
