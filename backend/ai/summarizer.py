@@ -1,6 +1,7 @@
 """Módulo IA: genera resúmenes, fichas y prompts visuales usando OpenAI o Groq."""
 from __future__ import annotations
 import os
+import base64
 from openai import AsyncOpenAI
 from graph.model import Block, ProjectGraph
 
@@ -88,7 +89,7 @@ class Summarizer:
         return response.choices[0].message.content
 
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
-        """Genera imagen con gpt-image-1 basada en los datos reales del bloque."""
+        """Genera imagen con gpt-image-1. Devuelve data URI base64 (no URL pública)."""
 
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
@@ -116,8 +117,7 @@ class Summarizer:
         )
         image_prompt = prompt_response.choices[0].message.content[:900]
 
-        # Paso 2: gpt-image-1 genera la imagen
-        # Calidades válidas: 'low', 'medium', 'high', 'auto'
+        # Paso 2: gpt-image-1 genera la imagen en base64
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
             model="gpt-image-1",
@@ -127,10 +127,18 @@ class Summarizer:
             n=1,
         )
 
+        # gpt-image-1 devuelve b64_json, no url
+        img_data = image_response.data[0]
+        if getattr(img_data, "b64_json", None):
+            image_src = f"data:image/png;base64,{img_data.b64_json}"
+        else:
+            # fallback por si en el futuro vuelven a devolver url
+            image_src = img_data.url or ""
+
         return {
             "block_id": block.id,
             "block_name": block.name,
-            "image_url": image_response.data[0].url,
+            "image_url": image_src,   # data URI o URL según respuesta
             "prompt_used": image_prompt,
         }
 
