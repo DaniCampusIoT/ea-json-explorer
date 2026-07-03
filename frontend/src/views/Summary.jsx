@@ -167,7 +167,7 @@ export default function Summary() {
         <div className="card" style={{ marginBottom: '1.25rem', textAlign: 'center', padding: '2rem' }}>
           <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎨</div>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-            Generando imagen con DALL-E 3… (puede tardar 10-20 segundos)
+            Generando imagen con GPT-IMAGE… (puede tardar 10-20 segundos)
           </p>
           <div style={{ marginTop: '1rem', height: '4px', borderRadius: '2px', background: 'var(--color-surface-offset)', overflow: 'hidden' }}>
             <div style={{

@@ -108,7 +108,7 @@ async def block_image_prompt(block_id: str):
     prompt = await _summarizer.generate_image_prompt(block, _graph)
     return {"prompt": prompt}
 
-@app.get("/api/blocks/{block_id}/image", summary="Genera imagen DALL-E del bloque")
+@app.get("/api/blocks/{block_id}/image", summary="Genera imagen GPT-IMAGE del bloque")
 async def block_image(block_id: str):
     _require_graph()
     block = _graph.blocks.get(block_id)
