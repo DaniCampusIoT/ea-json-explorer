@@ -22,6 +22,28 @@ Cuando se te pida un resumen de bloque, incluye siempre:
 Cuando se te pida un prompt visual, genera una descripción detallada 
 para un generador de imágenes (DALL-E / Midjourney style)."""
 
+IMAGE_PROMPT_STYLE = """
+You are a technical art director. Generate a vivid English prompt for gpt-image-1 to create a 
+high-quality INDUSTRIAL ILLUSTRATION of an embedded electronics subsystem.
+
+Style rules (strict):
+- Style: ultra-detailed industrial concept art, NOT a schematic or block diagram
+- Perspective: dramatic 3/4 isometric view, cinematic lighting
+- Aesthetic: dark matte PCB board (#0d1117) with glowing teal (#00e5cc) trace lines, 
+  cool-white SMD components, subtle blue ambient light, sharp shadows
+- Components must look like REAL electronic hardware: MCU chips, connectors, antennas, 
+  harness cables, junction boxes — rendered as physical 3D objects on a PCB
+- NO text labels, NO callouts, NO floating words anywhere in the image
+- NO schematic symbols, NO box-and-arrow diagrams
+- The image must feel like a product render from a high-end engineering studio
+- Mood: precise, technical, futuristic but grounded in real hardware
+- Render quality: 8K photorealistic, ray-traced reflections on chip surfaces
+
+Base the component layout ONLY on the parts and ports listed in the context below.
+Do NOT invent components. Map each named part to a plausible real hardware form factor.
+Maximum 950 characters for the final prompt.
+"""
+
 
 class Summarizer:
     def __init__(self):
@@ -89,7 +111,7 @@ class Summarizer:
         return response.choices[0].message.content
 
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
-        """Genera imagen con gpt-image-1. Devuelve data URI base64 (no URL pública)."""
+        """Genera imagen con gpt-image-1 en calidad high. Devuelve data URI base64."""
 
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
@@ -98,32 +120,28 @@ class Summarizer:
 
         context = graph.build_block_context(block)
 
-        # Paso 1: LLM genera prompt visual fiel a los datos reales
+        # Paso 1: LLM genera prompt visual de ilustración industrial (sin texto ni etiquetas)
         prompt_request = (
-            f"{context}\n\n"
-            "Genera un prompt en inglés para un modelo de generación de imágenes que represente visualmente este bloque. "
-            "IMPORTANTE: usa ÚNICAMENTE los puertos, partes y conexiones que aparecen en el contexto anterior. "
-            "No inventes componentes. El estilo debe ser: diagrama técnico isométrico industrial, "
-            "fondo oscuro #1a1a2e, líneas teal y blanco, etiquetas legibles con los nombres reales. "
-            "Máximo 900 caracteres."
+            f"{IMAGE_PROMPT_STYLE}\n\n"
+            f"Block context:\n{context}"
         )
         prompt_response = await self.client.chat.completions.create(
             model=MODEL,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": "You are a technical art director. Output only the image generation prompt, nothing else."},
                 {"role": "user", "content": prompt_request},
             ],
-            temperature=0.3,
+            temperature=0.4,
         )
-        image_prompt = prompt_response.choices[0].message.content[:900]
+        image_prompt = prompt_response.choices[0].message.content.strip()[:950]
 
-        # Paso 2: gpt-image-1 genera la imagen en base64
+        # Paso 2: gpt-image-1 genera la imagen en base64, calidad high
         image_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         image_response = await image_client.images.generate(
             model="gpt-image-1",
             prompt=image_prompt,
             size="1024x1024",
-            quality="medium",
+            quality="high",
             n=1,
         )
 
@@ -132,13 +150,12 @@ class Summarizer:
         if getattr(img_data, "b64_json", None):
             image_src = f"data:image/png;base64,{img_data.b64_json}"
         else:
-            # fallback por si en el futuro vuelven a devolver url
             image_src = img_data.url or ""
 
         return {
             "block_id": block.id,
             "block_name": block.name,
-            "image_url": image_src,   # data URI o URL según respuesta
+            "image_url": image_src,
             "prompt_used": image_prompt,
         }
 
