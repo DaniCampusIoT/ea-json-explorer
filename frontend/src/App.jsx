@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import AuthGuard from './auth/AuthGuard'
+import { getUser, logout, isAuthenticated } from './auth/googleAuth'
 import Ingest from './views/Ingest'
 import Explorer from './views/Explorer'
 import Summary from './views/Summary'
@@ -9,15 +9,11 @@ import AIPanel from './views/AIPanel'
 
 export default function App() {
   const [projectStats, setProjectStats] = useState(null)
-  const isAuthenticated = useIsAuthenticated()
-  const { accounts, instance } = useMsal()
+  const [user, setUser] = useState(null)
 
-  const account = accounts[0]
-  const displayName = account?.name ?? account?.username ?? ''
-
-  function handleLogout() {
-    instance.logoutRedirect({ postLogoutRedirectUri: window.location.origin })
-  }
+  useEffect(() => {
+    if (isAuthenticated()) setUser(getUser())
+  }, [])
 
   return (
     <BrowserRouter>
@@ -42,12 +38,16 @@ export default function App() {
             )}
 
             {/* Usuario autenticado */}
-            {isAuthenticated && (
+            {user && (
               <div className="header-user">
-                <span className="header-user-name">{displayName}</span>
+                {user.picture && (
+                  <img src={user.picture} alt="avatar" width="28" height="28"
+                    style={{ borderRadius: '50%', objectFit: 'cover' }} />
+                )}
+                <span className="header-user-name">{user.name || user.sub}</span>
                 <button
                   className="btn-logout"
-                  onClick={handleLogout}
+                  onClick={logout}
                   title="Cerrar sesión"
                   aria-label="Cerrar sesión"
                 >

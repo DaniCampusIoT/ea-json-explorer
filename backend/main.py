@@ -20,11 +20,12 @@ except ImportError:
 from parser.ea_parser import EAParser
 from graph.model import ProjectGraph
 from ai.summarizer import Summarizer
+from auth.google import router as google_router
 
 app = FastAPI(
     title="EA JSON Explorer",
     description="Explorador y analizador IA de proyectos Enterprise Architect",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -34,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Auth router ─────────────────────────────────────────
+app.include_router(google_router)
 
 # Estado en memoria
 _graph: ProjectGraph | None = None
@@ -55,7 +59,6 @@ async def ingest(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Error al parsear el proyecto: {e}")
 
-    # Re-crear summarizer para recoger la API key si se acaba de configurar
     _summarizer = Summarizer()
 
     return {
