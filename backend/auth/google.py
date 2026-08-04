@@ -19,7 +19,6 @@ JWT_EXPIRE_HOURS     = 8
 
 @router.get("/google/login")
 def google_login():
-    """Redirige al consentimiento de Google. Acepta cualquier cuenta Gmail."""
     params = (
         "https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={GOOGLE_CLIENT_ID}"
@@ -34,7 +33,6 @@ def google_login():
 
 @router.get("/google/callback")
 async def google_callback(code: str):
-    """Recibe el code de Google y devuelve JWT interno."""
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
             "https://oauth2.googleapis.com/token",
@@ -54,7 +52,13 @@ async def google_callback(code: str):
 
     id_token_raw = token_data.get("id_token", "")
     try:
-        user_info = jwt.decode(id_token_raw, options={"verify_signature": False})
+        # python-jose >= 3.x requiere key="" al omitir verificación de firma
+        user_info = jwt.decode(
+            id_token_raw,
+            key="",
+            algorithms=["RS256"],
+            options={"verify_signature": False, "verify_aud": False},
+        )
     except Exception as e:
         raise HTTPException(400, detail=f"id_token inválido: {e}")
 
@@ -68,7 +72,7 @@ async def google_callback(code: str):
         "picture": picture,
         "exp":     datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS),
     }
-    internal_token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    internal_token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
     return RedirectResponse(f"{FRONTEND_URL}?token={internal_token}")
 
 
@@ -78,7 +82,7 @@ def get_me(authorization: str = ""):
     if not token:
         raise HTTPException(401, "Token requerido")
     try:
-        data = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        data = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         return {"email": data["sub"], "name": data.get("name"), "picture": data.get("picture")}
     except Exception:
         raise HTTPException(401, "Token inválido o expirado")
