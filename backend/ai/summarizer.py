@@ -13,21 +13,38 @@ if AI_PROVIDER == "groq":
 else:
     MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-SYSTEM_PROMPT = """Eres un experto en arquitectura de sistemas y SysML.
-Analiza la información estructural de un proyecto Enterprise Architect y
-responde en español de forma clara, técnica y concisa.
-Cuando se te pida un resumen de bloque, incluye siempre:
-1. Función principal del bloque.
-2. Relación con otros bloques (dependencias).
-3. Puntos críticos o huecos de documentación."""
+SYSTEM_PROMPT = """Eres un experto en arquitectura de sistemas embebidos y SysML.
+Analiza la información estructural de un proyecto Enterprise Architect y responde en español.
+
+NORMAS DE FORMATO — sé siempre fiel a estas reglas:
+- Usa Markdown con encabezados (## y ###), negritas, listas y tablas cuando añadan claridad.
+- Los nombres de bloques, puertos e interfaces escríbelos en `backticks`.
+- En tablas: columnas alineadas, sin celdas vacías, máximo 4 columnas.
+- Respuestas técnicas, directas y concisas: sin introducciones ni despedidas genéricas.
+- Para fichas de bloque, usa SIEMPRE esta estructura:
+
+## 🧱 [Nombre del bloque]
+
+### Función principal
+(1-2 frases)
+
+### Contenido estructural
+| Parte / Puerto | Tipo | Descripción |
+|---|---|---|
+| ... | ... | ... |
+
+### Dependencias y conexiones
+(lista con `bloque_origen` → `bloque_destino`)
+
+### ⚠️ Alertas
+(documentación incompleta, dependencias no resueltas, TODOs)
+"""
 
 
 # ---------------------------------------------------------------------------
 # Physical connector map (regex -> description)
-# Order matters: more specific patterns first
 # ---------------------------------------------------------------------------
 _PORT_MAP: list[tuple[re.Pattern, str]] = [
-    # Power / voltage rails
     (re.compile(r'850[Vv]', re.I),
      "high-voltage screw terminal block (850V, orange, 3-pin)"),
     (re.compile(r'DC.?BUS|DCBUS', re.I),
@@ -40,7 +57,6 @@ _PORT_MAP: list[tuple[re.Pattern, str]] = [
      "screw terminal block power output (green, 2-pin)"),
     (re.compile(r'PWR|VCC|VIN|VOUT|HV|High.?Volt', re.I),
      "screw terminal power connector (2-pin)"),
-    # Wireless antennas — specific first
     (re.compile(r'ANT.?MPU5|MPU5', re.I),
      "RP-SMA female connector for MPU5 MIMO antenna (silver, panel-mount)"),
     (re.compile(r'ANT.?5G|5G', re.I),
@@ -53,7 +69,6 @@ _PORT_MAP: list[tuple[re.Pattern, str]] = [
      "SMA female telemetry whip antenna (white, 60mm)"),
     (re.compile(r'ANT|Antenna', re.I),
      "SMA female stub antenna"),
-    # Fieldbus / serial
     (re.compile(r'CAN.?FD', re.I),
      "DB9 male connector (CAN FD bus)"),
     (re.compile(r'CAN', re.I),
@@ -64,15 +79,12 @@ _PORT_MAP: list[tuple[re.Pattern, str]] = [
      "2.54 mm pin header (4-pin, UART)"),
     (re.compile(r'I2C|TWI', re.I),
      "2.54 mm pin header (4-pin, I2C)"),
-    # USB / PCIe
     (re.compile(r'USB', re.I),
      "USB-C female receptacle"),
     (re.compile(r'PCI', re.I),
      "PCIe edge connector"),
-    # Ethernet / LAN
     (re.compile(r'ETH|Ethernet|RJ45|LAN', re.I),
      "RJ45 shielded Ethernet jack"),
-    # Actuators / peripherals
     (re.compile(r'Light|LED', re.I),
      "JST-PH 4-pin white connector (LED lighting)"),
     (re.compile(r'Brush|BWS', re.I),
@@ -87,21 +99,19 @@ _DEFAULT_CONNECTOR = "generic 2.54 mm header connector (2-pin)"
 
 
 # ---------------------------------------------------------------------------
-# Port extraction — uses graph directly (ground truth)
+# Port / Part extraction from graph
 # ---------------------------------------------------------------------------
 
 def _ports_from_graph(block: Block, graph: ProjectGraph) -> list[str]:
-    """Resolve block.port_ids against graph.ports — the only source of truth."""
     names: list[str] = []
     for pid in block.port_ids:
         port = graph.ports.get(pid)
         if port and port.name:
             names.append(port.name.strip())
-    return list(dict.fromkeys(names))  # deduplicate, preserve order
+    return list(dict.fromkeys(names))
 
 
 def _parts_from_graph(block: Block, graph: ProjectGraph) -> list[str]:
-    """Resolve block.part_ids against graph.parts."""
     names: list[str] = []
     for pid in block.part_ids:
         part = graph.parts.get(pid)
@@ -111,7 +121,6 @@ def _parts_from_graph(block: Block, graph: ProjectGraph) -> list[str]:
 
 
 def _fuzzy_match(candidate: str, valid: list[str], threshold: float = 0.75) -> str | None:
-    """Return the best matching valid port name, or None if below threshold."""
     best, best_score = None, 0.0
     c_lower = candidate.lower()
     for v in valid:
@@ -122,25 +131,16 @@ def _fuzzy_match(candidate: str, valid: list[str], threshold: float = 0.75) -> s
 
 
 def _validate_llm_ports(llm_ports: list[str], real_ports: list[str]) -> list[str]:
-    """
-    Cross-check LLM output against real ports:
-    - Exact or fuzzy match → use real name
-    - Hallucination (no match) → discard
-    - Real ports not found by LLM → append at end
-    """
     validated: list[str] = []
     used: set[str] = set()
-
     for candidate in llm_ports:
         real = _fuzzy_match(candidate, real_ports)
         if real and real not in used:
             validated.append(real)
             used.add(real)
-
     for rp in real_ports:
         if rp not in used:
             validated.append(rp)
-
     return validated
 
 
@@ -152,7 +152,7 @@ def _map_port_to_physical(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Prompt builder
+# Prompt builder (image)
 # ---------------------------------------------------------------------------
 
 def _build_image_prompt(block_name: str, ports: list[str], part_names: list[str]) -> str:
@@ -193,65 +193,40 @@ class Summarizer:
             ) if api_key else None
         else:
             api_key = os.getenv("OPENAI_API_KEY")
-            self.client = AsyncOpenAI(
-                api_key=api_key,
-            ) if api_key else None
+            self.client = AsyncOpenAI(api_key=api_key) if api_key else None
 
-    # ------------------------------------------------------------------
     async def _get_validated_ports(
         self, block: Block, graph: ProjectGraph, context: str
     ) -> list[str]:
-        """
-        Hybrid pipeline:
-        1. Ground truth from graph (always runs, zero cost)
-        2. LLM enrichment (optional, catches ports missing from graph index)
-        3. Fuzzy validator — LLM output must match ground truth or is discarded
-        """
         real_ports = _ports_from_graph(block, graph)
-
-        # If the graph already has all ports, skip the LLM call
         if real_ports:
-            return real_ports  # graph is complete — trust it directly
-
-        # Fallback: graph has no ports — ask LLM, then validate against context names
+            return real_ports
         if not self.client:
             return real_ports
-
         try:
             response = await self.client.chat.completions.create(
                 model=MODEL,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a precise technical extractor. "
-                            "Given a SysML block context, list ONLY the port and interface names "
-                            "exactly as they appear in the text. "
-                            "Output one name per line. No explanations, no prefixes, no bullets."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Block context:\n{context}\n\nList all port and interface names:",
-                    },
+                    {"role": "system", "content": (
+                        "You are a precise technical extractor. "
+                        "Given a SysML block context, list ONLY the port and interface names "
+                        "exactly as they appear in the text. "
+                        "Output one name per line. No explanations."
+                    )},
+                    {"role": "user", "content": f"Block context:\n{context}\n\nList all port names:"},
                 ],
                 temperature=0.0,
             )
             raw = response.choices[0].message.content
-            llm_ports = [
-                ln.strip().lstrip("-•* ") for ln in raw.splitlines() if ln.strip()
-            ]
-            # Validate against names found literally in the context string
+            llm_ports = [ln.strip().lstrip("-•* ") for ln in raw.splitlines() if ln.strip()]
             context_names = [
                 ln.strip().lstrip("- ").split(":")[0].strip()
-                for ln in context.splitlines()
-                if ln.strip().startswith("-")
+                for ln in context.splitlines() if ln.strip().startswith("-")
             ]
             return _validate_llm_ports(llm_ports, context_names)
         except Exception:
             return real_ports
 
-    # ------------------------------------------------------------------
     async def summarize_block(self, block: Block, graph: ProjectGraph) -> dict:
         context = graph.build_block_context(block)
         project_ctx = graph.build_project_summary()
@@ -259,13 +234,11 @@ class Summarizer:
             return {"error": f"Proveedor IA no configurado: {AI_PROVIDER}", "context": context}
 
         prompt = (
-            f"Contexto del proyecto: {project_ctx}\n\n"
+            f"**Proyecto:** {project_ctx}\n\n"
             f"{context}\n\n"
-            "Genera una ficha con:\n"
-            "- Resumen estructural (qué contiene)\n"
-            "- Resumen contextual (dependencias, impacto)\n"
-            "- Resumen funcional (para qué sirve)\n"
-            "- Alertas: huecos de documentación o dependencias no resueltas"
+            "Genera la ficha completa del bloque según la estructura del system prompt.\n"
+            "Usa Markdown. Incluye tabla de partes/puertos si hay datos. "
+            "Termina con la sección de Alertas aunque esté vacía."
         )
         response = await self.client.chat.completions.create(
             model=MODEL,
@@ -276,23 +249,20 @@ class Summarizer:
             temperature=0.3,
         )
         return {
-            "block_id": block.id,
-            "block_name": block.name,
-            "summary": response.choices[0].message.content,
+            "block_id":    block.id,
+            "block_name":  block.name,
+            "summary":     response.choices[0].message.content,
             "context_used": context,
         }
 
-    # ------------------------------------------------------------------
     async def generate_image_prompt(self, block: Block, graph: ProjectGraph) -> str:
         context = graph.build_block_context(block)
         ports = await self._get_validated_ports(block, graph, context)
         part_names = _parts_from_graph(block, graph)
         return _build_image_prompt(block.name, ports, part_names)
 
-    # ------------------------------------------------------------------
     async def generate_image(self, block: Block, graph: ProjectGraph) -> dict:
-        """Genera imagen con gpt-image-1 quality=high. Devuelve data URI base64."""
-
+        """Genera imagen con gpt-image-1 quality=high."""
         if AI_PROVIDER != "openai":
             return {"error": "La generación de imágenes requiere AI_PROVIDER=openai"}
         if not self.client:
@@ -311,34 +281,32 @@ class Summarizer:
             quality="high",
             n=1,
         )
-
         img_data = image_response.data[0]
-        if getattr(img_data, "b64_json", None):
-            image_src = f"data:image/png;base64,{img_data.b64_json}"
-        else:
-            image_src = img_data.url or ""
-
+        image_src = (
+            f"data:image/png;base64,{img_data.b64_json}"
+            if getattr(img_data, "b64_json", None)
+            else (img_data.url or "")
+        )
         return {
-            "block_id": block.id,
-            "block_name": block.name,
-            "image_url": image_src,
+            "block_id":    block.id,
+            "block_name":  block.name,
+            "image_url":   image_src,
             "prompt_used": image_prompt,
         }
 
-    # ------------------------------------------------------------------
     async def answer_question(self, question: str, graph: ProjectGraph) -> str:
         project_ctx = graph.build_project_summary()
         top_blocks = list(graph.blocks.values())[:20]
-        blocks_ctx = "\n---\n".join(
-            graph.build_block_context(b) for b in top_blocks
-        )
+        blocks_ctx = "\n---\n".join(graph.build_block_context(b) for b in top_blocks)
         if not self.client:
             return f"Proveedor IA no configurado: {AI_PROVIDER}"
 
         prompt = (
-            f"Proyecto: {project_ctx}\n\n"
-            f"Bloques principales:\n{blocks_ctx}\n\n"
-            f"Pregunta: {question}"
+            f"**Proyecto:** {project_ctx}\n\n"
+            f"**Bloques principales:**\n{blocks_ctx}\n\n"
+            f"**Pregunta:** {question}\n\n"
+            "Responde en Markdown. Usa tablas o listas cuando mejoren la claridad. "
+            "Si la respuesta involucra múltiples bloques, créa una tabla comparativa."
         )
         response = await self.client.chat.completions.create(
             model=MODEL,
