@@ -13,7 +13,6 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 REDIRECT_URI         = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/google/callback")
 FRONTEND_URL         = os.getenv("FRONTEND_URL", "http://localhost:5173")
 JWT_SECRET           = os.getenv("JWT_SECRET", "cambia-este-secreto-en-produccion")
-JWT_ALGORITHM        = "HS256"
 JWT_EXPIRE_HOURS     = 8
 
 
@@ -52,12 +51,15 @@ async def google_callback(code: str):
 
     id_token_raw = token_data.get("id_token", "")
     try:
-        # python-jose >= 3.x requiere key="" al omitir verificación de firma
         user_info = jwt.decode(
             id_token_raw,
             key="",
             algorithms=["RS256"],
-            options={"verify_signature": False, "verify_aud": False},
+            options={
+                "verify_signature": False,
+                "verify_aud":       False,
+                "verify_at_hash":   False,
+            },
         )
     except Exception as e:
         raise HTTPException(400, detail=f"id_token inválido: {e}")
