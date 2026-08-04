@@ -18,6 +18,7 @@ except ImportError:
     print("[EA Explorer] python-dotenv no instalado. Usa variables de entorno del sistema.")
 
 from parser.ea_parser import EAParser
+from parser.xml_loader import xml_to_dict
 from graph.model import ProjectGraph
 from ai.summarizer import Summarizer
 from auth.google import router as google_router
@@ -25,7 +26,7 @@ from auth.google import router as google_router
 app = FastAPI(
     title="EA JSON Explorer",
     description="Explorador y analizador IA de proyectos Enterprise Architect",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -36,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Auth router ─────────────────────────────────────────
+# ── Auth router ─────────────────────────────────────────────────────────
 app.include_router(google_router)
 
 # Estado en memoria
@@ -44,14 +45,24 @@ _graph: ProjectGraph | None = None
 _summarizer: Summarizer = Summarizer()
 
 
-@app.post("/api/ingest", summary="Carga y parsea el JSON de EA")
+@app.post("/api/ingest", summary="Carga y parsea el JSON o XML de EA")
 async def ingest(file: UploadFile = File(...)):
     global _graph, _summarizer
+
+    raw = await file.read()
+    filename = (file.filename or "").lower()
+
+    # Detecta formato por extensión o contenido
+    is_xml = filename.endswith(".xml") or filename.endswith(".xmi") or raw.lstrip()[:5] == b"<?xml"
+
     try:
-        raw = await file.read()
-        data = orjson.loads(raw)
+        if is_xml:
+            data = xml_to_dict(raw)
+        else:
+            data = orjson.loads(raw)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"JSON inválido: {e}")
+        fmt = "XML" if is_xml else "JSON"
+        raise HTTPException(status_code=400, detail=f"{fmt} inválido: {e}")
 
     try:
         parser = EAParser(data)
@@ -111,6 +122,7 @@ async def block_image_prompt(block_id: str):
     prompt = await _summarizer.generate_image_prompt(block, _graph)
     return {"prompt": prompt}
 
+
 @app.get("/api/blocks/{block_id}/image", summary="Genera imagen GPT-IMAGE del bloque")
 async def block_image(block_id: str):
     _require_graph()
@@ -122,6 +134,7 @@ async def block_image(block_id: str):
         raise HTTPException(status_code=503, detail=result["error"])
     return result
 
+
 @app.post("/api/ask", summary="Consulta libre IA")
 async def ask(body: dict):
     _require_graph()
@@ -129,7 +142,7 @@ async def ask(body: dict):
     if not question:
         raise HTTPException(status_code=400, detail="La pregunta no puede estar vacía")
     if not _summarizer.client:
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY no configurada. Crea el archivo backend/.env con tu clave.")
+        raise HTTPException(status_code=503, detail="OPENAI_API_KEY no configurada.")
     answer = await _summarizer.answer_question(question, _graph)
     return {"answer": answer}
 
