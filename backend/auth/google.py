@@ -18,7 +18,7 @@ JWT_EXPIRE_HOURS     = 8
 
 @router.get("/google/login")
 def google_login():
-    params = (
+    url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={GOOGLE_CLIENT_ID}"
         f"&redirect_uri={REDIRECT_URI}"
@@ -27,7 +27,7 @@ def google_login():
         "&access_type=offline"
         "&prompt=select_account"
     )
-    return RedirectResponse(params)
+    return RedirectResponse(url)
 
 
 @router.get("/google/callback")
@@ -46,7 +46,7 @@ async def google_callback(code: str):
     token_data = token_resp.json()
 
     if "error" in token_data:
-        error_desc = token_data.get('error_description', token_data['error'])
+        error_desc = token_data.get("error_description", token_data["error"])
         return RedirectResponse(f"{FRONTEND_URL}?auth_error={error_desc}")
 
     id_token_raw = token_data.get("id_token", "")
