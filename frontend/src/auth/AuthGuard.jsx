@@ -1,37 +1,23 @@
 /**
  * AuthGuard — envuelve rutas protegidas.
  * Redirige a LoginPage si no hay sesión activa.
- * Rechaza cuentas cuyo email no sea @quandum.com.
  */
 import React, { useEffect, useState } from 'react'
 import LoginPage from './LoginPage'
-import { isAuthenticated, getUser, handleCallbackToken, ALLOWED_DOMAIN } from './googleAuth'
+import { isAuthenticated, handleCallbackToken } from './googleAuth'
 
 export default function AuthGuard({ children }) {
-  const [authState, setAuthState] = useState('checking') // 'checking' | 'ok' | 'denied' | 'error'
+  const [authState, setAuthState] = useState('checking')
   const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
-    // Captura token del callback de Google
     const result = handleCallbackToken()
-    if (result?.error === 'domain_not_allowed') {
-      setErrorMsg(`Tu cuenta no pertenece al dominio @${ALLOWED_DOMAIN}.`)
+    if (result?.error) {
+      setErrorMsg(`No se pudo iniciar sesión: ${result.error}`)
       setAuthState('denied')
       return
     }
-
-    if (isAuthenticated()) {
-      const user = getUser()
-      const email = user?.sub ?? ''
-      if (!email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`)) {
-        setErrorMsg(`La cuenta ${email} no pertenece al dominio @${ALLOWED_DOMAIN}.`)
-        setAuthState('denied')
-      } else {
-        setAuthState('ok')
-      }
-    } else {
-      setAuthState('unauthenticated')
-    }
+    setAuthState(isAuthenticated() ? 'ok' : 'unauthenticated')
   }, [])
 
   if (authState === 'checking') {
@@ -53,19 +39,16 @@ export default function AuthGuard({ children }) {
           </svg>
           <h2>Acceso denegado</h2>
           <p>{errorMsg}</p>
-          <p>Solo empleados de Quandum Aerospaces pueden usar esta aplicación.</p>
           <button className="btn btn-secondary" style={{ marginTop: '1.5rem' }}
             onClick={() => { sessionStorage.clear(); window.location.href = '/' }}>
-            Cerrar sesión
+            Volver al inicio
           </button>
         </div>
       </div>
     )
   }
 
-  if (authState === 'unauthenticated') {
-    return <LoginPage />
-  }
+  if (authState === 'unauthenticated') return <LoginPage />
 
   return children
 }

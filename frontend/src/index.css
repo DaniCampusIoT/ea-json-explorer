@@ -1,4 +1,4 @@
-/* ── Design tokens ─────────────────────────────────────────────────── */
+/* ── Design tokens ─────────────────────────────────────────────── */
 :root {
   --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
   --text-sm:   clamp(0.875rem, 0.8rem  + 0.35vw, 1rem);
@@ -51,7 +51,7 @@
   --color-error-highlight:#4c3d46;
 }
 
-/* ── Base reset ─────────────────────────────────────────────────────── */
+/* ── Base reset ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
 body {
@@ -65,7 +65,7 @@ body {
 img, svg { display: block; max-width: 100%; }
 button { cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
 
-/* ── App shell ──────────────────────────────────────────────────────── */
+/* ── App shell ────────────────────────────────────────────────────── */
 .app-shell {
   display: grid;
   grid-template-columns: 200px 1fr;
@@ -104,7 +104,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   &.active { background: color-mix(in oklch, var(--color-primary) 10%, var(--color-bg)); color: var(--color-primary); font-weight: 500; }
 }
 
-/* ── Header user area ───────────────────────────────────────────────── */
+/* ── Header user area ────────────────────────────────────────────── */
 .header-user {
   margin-left: auto;
   display: flex;
@@ -131,19 +131,19 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   &:hover { background: var(--color-error-highlight); color: var(--color-error); }
 }
 
-/* ── Login page ─────────────────────────────────────────────────────── */
+/* ── Login page ────────────────────────────────────────────────────── */
 .login-page {
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-bg);
+  background: linear-gradient(135deg, #f0f4f4 0%, #e8f0f1 50%, #f7f6f2 100%);
   padding: var(--space-4);
 }
 .login-card {
   width: 100%;
-  max-width: 400px;
-  background: var(--color-surface);
+  max-width: 420px;
+  background: #fff;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: var(--space-12) var(--space-8);
@@ -151,29 +151,38 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   flex-direction: column;
   align-items: center;
   gap: var(--space-4);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 20px 60px oklch(0.3 0.04 180 / 0.12), 0 4px 16px oklch(0.3 0.04 180 / 0.06);
 }
-.login-logo { margin-bottom: var(--space-2); }
+.login-logo {
+  background: color-mix(in oklch, var(--color-primary) 8%, white);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.login-brand {
+  text-align: center;
+}
 .login-title {
-  font-size: var(--text-xl);
+  font-size: 1.6rem;
   font-weight: 700;
   color: var(--color-text);
-  text-align: center;
+  letter-spacing: -0.02em;
 }
 .login-subtitle {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-  text-align: center;
-  margin-top: calc(-1 * var(--space-2));
+  margin-top: 0.2rem;
 }
-.login-domain-hint {
+.login-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--color-divider);
+  margin: var(--space-2) 0;
+}
+.login-desc {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-  background: var(--color-surface-offset);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-4);
   text-align: center;
-  strong { color: var(--color-primary); }
 }
 .login-error {
   width: 100%;
@@ -184,28 +193,39 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   font-size: var(--text-sm);
   text-align: center;
 }
-.btn-microsoft {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-6);
-  background: #2f2f2f;
-  color: #fff;
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  transition: background var(--transition), opacity var(--transition);
-  margin-top: var(--space-2);
-  &:hover:not(:disabled) { background: #1a1a1a; }
-  &:disabled { opacity: 0.6; cursor: not-allowed; }
-}
 .login-footer {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
   text-align: center;
   line-height: 1.5;
+  margin-top: var(--space-2);
+}
+
+/* ── Google button ──────────────────────────────────────────────── */
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 0.75rem var(--space-6);
+  background: #fff;
+  color: #3c4043;
+  border: 1.5px solid #dadce0;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  transition: background var(--transition), box-shadow var(--transition), border-color var(--transition);
+  &:hover {
+    background: #f8f9fa;
+    border-color: #c6c9cc;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  }
+  &:active {
+    background: #f1f3f4;
+    box-shadow: none;
+  }
 }
 
 /* ── Auth loading / denied ──────────────────────────────────────────── */
@@ -253,7 +273,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   p  { font-size: var(--text-sm); color: var(--color-text-muted); max-width: 34ch; }
 }
 
-/* ── Buttons (generic) ──────────────────────────────────────────────── */
+/* ── Buttons (generic) ───────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -272,7 +292,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   &:hover { background: var(--color-divider); }
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────── */
+/* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .app-shell {
     grid-template-columns: 1fr;
