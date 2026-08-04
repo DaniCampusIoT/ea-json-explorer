@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-// ─── EA XMI/JSON Client-side parser (for immediate stats + fallback) ───
+const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
+
+// ─── Client-side parser (JSON only, para preview rápido) ───
 function parseEAJson(raw) {
   let data
   try { data = JSON.parse(raw) } catch (e) {
@@ -42,33 +44,37 @@ export default function Ingest({ onLoaded }) {
   const [error, setError]       = useState(null)
   const [result, setResult]     = useState(null)
   const [dragging, setDragging] = useState(false)
-  const [backendOk, setBackendOk] = useState(null) // null=unknown, true, false
+  const [backendOk, setBackendOk] = useState(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
 
   async function processFile(file) {
     if (!file) return
     const ext = file.name.split('.').pop().toLowerCase()
-    if (!['json', 'txt'].includes(ext)) {
-      setError('Formato no válido. Usa .json o .txt exportado de EA.')
+    if (!VALID_EXTS.includes(ext)) {
+      setError('Formato no válido. Usa .json, .txt, .xml o .xmi exportado de EA.')
       return
     }
     setLoading(true)
     setError(null)
     setResult(null)
 
-    // 1. Read text and parse client-side for immediate stats + window.eaProject
-    const text = await file.text()
-    let stats
-    try {
-      stats = parseEAJson(text)
-    } catch (err) {
-      setError(err.message)
-      setLoading(false)
-      return
+    const isXml = ext === 'xml' || ext === 'xmi'
+
+    // Para XML saltamos el parser cliente y vamos directo al backend
+    let stats = { packages: 0, blocks: 0, connectors: 0, ports: 0 }
+    if (!isXml) {
+      const text = await file.text()
+      try {
+        stats = parseEAJson(text)
+      } catch (err) {
+        setError(err.message)
+        setLoading(false)
+        return
+      }
     }
 
-    // 2. Also POST to backend (for AI features). Non-blocking if backend is down.
+    // POST al backend (obligatorio para XML, opcional para JSON)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -76,14 +82,24 @@ export default function Ingest({ onLoaded }) {
       if (res.ok) {
         const backendStats = await res.json()
         setBackendOk(true)
-        // Use backend counts if available (more accurate)
         stats = backendStats
         onLoaded(backendStats)
       } else {
+        const err = await res.json().catch(() => ({}))
+        if (isXml) {
+          setError(err.detail || 'Error al procesar el XML en el backend.')
+          setLoading(false)
+          return
+        }
         setBackendOk(false)
         onLoaded(stats)
       }
     } catch {
+      if (isXml) {
+        setError('No se pudo conectar con el backend. Asegúrate de que está arrancado.')
+        setLoading(false)
+        return
+      }
       setBackendOk(false)
       onLoaded(stats)
     }
@@ -103,7 +119,8 @@ export default function Ingest({ onLoaded }) {
     <div style={{ maxWidth: '600px' }}>
       <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Cargar proyecto</h2>
       <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-        Sube el archivo exportado desde Enterprise Architect. Se aceptan <strong>.json</strong> y <strong>.txt</strong>.
+        Sube el archivo exportado desde Enterprise Architect.
+        Se aceptan <strong>.json</strong>, <strong>.txt</strong>, <strong>.xml</strong> y <strong>.xmi</strong>.
       </p>
 
       <div
@@ -122,8 +139,10 @@ export default function Ingest({ onLoaded }) {
       >
         <span style={{ fontSize: '2.5rem' }}>{loading ? '⏳' : dragging ? '📥' : '📂'}</span>
         <span style={{ fontWeight: 600 }}>{loading ? 'Procesando…' : dragging ? 'Suelta aquí' : 'Selecciona o arrastra el archivo'}</span>
-        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Formatos: <code>.json</code> y <code>.txt</code> de EA</span>
-        <input ref={inputRef} type="file" accept=".json,.txt" onChange={handleInputChange} style={{ display: 'none' }} disabled={loading} />
+        <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          Formatos: <code>.json</code>, <code>.txt</code>, <code>.xml</code>, <code>.xmi</code>
+        </span>
+        <input ref={inputRef} type="file" accept=".json,.txt,.xml,.xmi" onChange={handleInputChange} style={{ display: 'none' }} disabled={loading} />
       </div>
 
       {error && (
@@ -138,7 +157,7 @@ export default function Ingest({ onLoaded }) {
 
           {backendOk === false && (
             <div style={{ margin: '0.5rem 0 0.75rem', padding: '0.6rem 0.75rem', background: '#fffbea', border: '1px solid #f0c040', borderRadius: '0.4rem', fontSize: '0.8rem', color: '#7a5800' }}>
-              ⚠️ Backend no disponible. Las funciones de IA no estarán activas. Para activarlas, arranca el backend con tu OPENAI_API_KEY (ver README).
+              ⚠️ Backend no disponible. Las funciones de IA no estarán activas.
             </div>
           )}
           {backendOk === true && (
