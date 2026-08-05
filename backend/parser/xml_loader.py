@@ -29,33 +29,76 @@ def _elem_to_dict(elem: ET.Element) -> dict:
     return result
 
 
-def _clean(content: bytes) -> bytes:
-    """Elimina BOM UTF-8/UTF-16 y normaliza la declaracion de encoding a UTF-8."""
-    # BOM UTF-16 LE/BE
+# Encodings que EA suele usar segun version y plataforma
+_EA_ENCODINGS = ["utf-8", "windows-1252", "latin-1", "iso-8859-1"]
+
+
+def _extract_declared_encoding(content: bytes) -> str | None:
+    """Lee el encoding declarado en <?xml ... encoding="..."?> si existe."""
+    m = re.search(rb'encoding=["\']([^"\']+)["\']', content[:200])
+    if m:
+        return m.group(1).decode("ascii", errors="ignore").lower()
+    return None
+
+
+def _decode_content(content: bytes) -> str:
+    """
+    Decodifica el contenido de bytes a str usando el siguiente orden:
+    1. BOM UTF-16 LE/BE
+    2. BOM UTF-8
+    3. Encoding declarado en <?xml ...?>
+    4. Prueba con utf-8, windows-1252, latin-1 en ese orden
+    """
+    # 1. BOM UTF-16
     if content[:2] in (b'\xff\xfe', b'\xfe\xff'):
-        content = content.decode('utf-16').encode('utf-8')
-    # BOM UTF-8
+        return content.decode('utf-16')
+
+    # 2. BOM UTF-8 — eliminar y tratar como utf-8
     if content[:3] == b'\xef\xbb\xbf':
-        content = content[3:]
-    # Normaliza encoding="xxx" -> encoding="utf-8" en la declaracion XML
-    content = re.sub(
-        rb'(<\?xml[^?]*?)encoding=["\'][^"\']*["\']',
-        rb'\1encoding="utf-8"',
-        content,
-        count=1,
-    )
-    return content
+        return content[3:].decode('utf-8')
+
+    # 3. Encoding declarado en la cabecera XML
+    declared = _extract_declared_encoding(content)
+    if declared:
+        # EA exporta a veces como "windows-1252" o "iso-8859-1"
+        enc = declared.replace("iso-8859-1", "windows-1252")  # superset mas seguro
+        try:
+            return content.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            pass  # fallthrough a deteccion automatica
+
+    # 4. Prueba secuencial de encodings tipicos
+    for enc in _EA_ENCODINGS:
+        try:
+            return content.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+
+    # Ultimo recurso: reemplazar caracteres invalidos
+    return content.decode("latin-1", errors="replace")
 
 
 def xml_to_dict(content: bytes) -> dict:
-    content = _clean(content)
+    # Decodificar con el encoding correcto a str Unicode
+    text = _decode_content(content)
+
+    # Re-codificar a UTF-8 con declaracion XML normalizada
+    text = re.sub(
+        r'(<\?xml[^?]*?)encoding=["\'][^"\']*["\']',
+        r'\1encoding="utf-8"',
+        text,
+        count=1,
+    )
+    # Si no habia declaracion, anadir una
+    if not text.lstrip().startswith('<?xml'):
+        text = '<?xml version="1.0" encoding="utf-8"?>\n' + text
+
+    content_utf8 = text.encode('utf-8')
+
     try:
-        root = ET.fromstring(content)
+        root = ET.fromstring(content_utf8)
     except ET.ParseError as e:
-        # Intento de rescate con latin-1
-        try:
-            root = ET.fromstring(content.decode('latin-1').encode('utf-8'))
-        except Exception:
-            raise ValueError(f"XML inválido: {e}") from e
+        raise ValueError(f"XML inválido: {e}") from e
+
     tag = _strip_ns(root.tag)
     return {tag: _elem_to_dict(root)}
