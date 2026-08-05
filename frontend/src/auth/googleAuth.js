@@ -3,9 +3,12 @@
  * Guarda el JWT interno en sessionStorage.
  */
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL
-             || import.meta.env.VITE_API_URL
+// VITE_API_URL lleva desde el primer deploy en el bundle.
+// VITE_BACKEND_URL es el alias nuevo — se usa si existe.
+const BACKEND = import.meta.env.VITE_API_URL
+             || import.meta.env.VITE_BACKEND_URL
              || ''
+
 const TOKEN_KEY = 'ea_auth_token'
 
 export function loginWithGoogle() {
