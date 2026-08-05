@@ -1,4 +1,4 @@
-"""Google OAuth2 — router de autenticación."""
+"""Google OAuth2 — router de autenticación con whitelist de emails."""
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 import httpx
@@ -14,6 +14,14 @@ REDIRECT_URI         = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/a
 FRONTEND_URL         = os.getenv("FRONTEND_URL", "http://localhost:5173")
 JWT_SECRET           = os.getenv("JWT_SECRET", "cambia-este-secreto-en-produccion")
 JWT_EXPIRE_HOURS     = 8
+
+# Whitelist de emails permitidos.
+# Si está vacía o no definida, se permite el acceso a cualquier cuenta Google.
+# Ejemplo en .env:  ALLOWED_EMAILS=tu@gmail.com,colega@empresa.com
+_raw_allowed = os.getenv("ALLOWED_EMAILS", "")
+ALLOWED_EMAILS: set[str] = {
+    e.strip().lower() for e in _raw_allowed.split(",") if e.strip()
+}
 
 
 @router.get("/google/login")
@@ -64,9 +72,15 @@ async def google_callback(code: str):
     except Exception as e:
         raise HTTPException(400, detail=f"id_token inválido: {e}")
 
-    email   = user_info.get("email", "")
+    email   = user_info.get("email", "").lower()
     name    = user_info.get("name", email)
     picture = user_info.get("picture", "")
+
+    # — Whitelist check —
+    if ALLOWED_EMAILS and email not in ALLOWED_EMAILS:
+        return RedirectResponse(
+            f"{FRONTEND_URL}?auth_error=acceso_denegado&email={email}"
+        )
 
     payload = {
         "sub":     email,
