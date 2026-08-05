@@ -1,13 +1,18 @@
 import React, { useState } from 'react'
 import MarkdownView from '../components/MarkdownView'
 import { SkeletonAIAnswer } from '../components/Skeleton'
+import { useAI } from '../context/AIContext'
+import { exportMarkdown, exportPDF, buildChatMarkdown } from '../utils/exportUtils'
+
+function chatToHtml(history) {
+  return history.map(({ question, answer }, i) =>
+    `<h2>${i + 1}. ${question}</h2><p>${answer.replace(/\n/g, '<br/>')}</p>`
+  ).join('<hr/>')
+}
 
 export default function AIPanel() {
+  const { history, answer, loading, error, ask, clearHistory } = useAI()
   const [question, setQuestion] = useState('')
-  const [answer,   setAnswer]   = useState(null)
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState(null)
-  const [history,  setHistory]  = useState([])
 
   const suggestedQuestions = [
     '¿Cuáles son los bloques más críticos del sistema?',
@@ -17,37 +22,36 @@ export default function AIPanel() {
     'Dame un resumen ejecutivo del proyecto',
   ]
 
-  async function sendQuestion(q) {
-    const questionToSend = q || question
-    if (!questionToSend.trim()) return
-    setLoading(true)
-    setAnswer(null)
-    setError(null)
-    try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: questionToSend }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.detail || `Error ${res.status}`)
-      }
-      const data = await res.json()
-      setAnswer(data.answer)
-      setHistory(prev => [{ question: questionToSend, answer: data.answer }, ...prev.slice(0, 9)])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+  function sendQuestion(q) {
+    const toSend = q || question
+    if (!toSend.trim()) return
+    setQuestion('')
+    ask(toSend)
+  }
+
+  function handleExportMD() {
+    exportMarkdown('arcana-chat', buildChatMarkdown(history))
+  }
+
+  function handleExportPDF() {
+    exportPDF('Conversación IA — Arcana', chatToHtml(history))
   }
 
   return (
     <div style={{ maxWidth: '800px' }}>
-      <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Panel IA</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, flex: 1 }}>Panel IA</h2>
+        {history.length > 0 && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn btn-ghost" style={{ fontSize: '0.78rem' }} onClick={handleExportMD}>💾 .md</button>
+            <button className="btn btn-ghost" style={{ fontSize: '0.78rem' }} onClick={handleExportPDF}>🖨 PDF</button>
+            <button className="btn btn-ghost" style={{ fontSize: '0.78rem', color: 'var(--color-error)' }} onClick={clearHistory}>🗑️ Limpiar</button>
+          </div>
+        )}
+      </div>
       <p style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
         Consulta libre sobre el proyecto cargado. Requiere backend con <code>OPENAI_API_KEY</code> configurada.
+        {history.length > 0 && <span style={{ marginLeft: '0.5rem', color: 'var(--color-primary)', fontWeight: 500 }}>{history.length} mensajes guardados</span>}
       </p>
 
       {/* Suggested */}
@@ -56,7 +60,7 @@ export default function AIPanel() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           {suggestedQuestions.map(q => (
             <button key={q} className="btn btn-ghost" style={{ fontSize: '0.8rem' }}
-              onClick={() => { setQuestion(q); sendQuestion(q) }}>{q}</button>
+              onClick={() => sendQuestion(q)}>{q}</button>
           ))}
         </div>
       </div>
@@ -71,7 +75,7 @@ export default function AIPanel() {
           style={{ flex: 1, padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: '0.5rem', fontSize: '0.875rem', background: 'var(--color-surface)', color: 'var(--color-text)' }}
         />
         <button className="btn btn-primary" onClick={() => sendQuestion()} disabled={loading}>
-          {loading ? '...' : 'Preguntar'}
+          {loading ? '…' : 'Preguntar'}
         </button>
       </div>
 
@@ -79,18 +83,13 @@ export default function AIPanel() {
       {error && (
         <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#fffbea', border: '1px solid #f0c040', borderRadius: '0.5rem', fontSize: '0.85rem', color: '#7a5800' }}>
           ⚠️ {error}
-          {(error.includes('OPENAI_API_KEY') || error.includes('500')) && (
-            <div style={{ marginTop: '0.5rem', fontWeight: 600 }}>
-              Configura la clave: en <code>backend/</code> crea un archivo <code>.env</code> con <code>OPENAI_API_KEY=sk-...</code> y reinicia el backend.
-            </div>
-          )}
         </div>
       )}
 
-      {/* Skeleton mientras carga */}
+      {/* Skeleton */}
       {loading && <SkeletonAIAnswer />}
 
-      {/* Answer */}
+      {/* Respuesta actual */}
       {!loading && answer && (
         <div className="card" style={{ marginBottom: '1.5rem', background: 'var(--color-primary-highlight)' }}>
           <div className="card-title">🤖 Respuesta</div>
@@ -98,10 +97,12 @@ export default function AIPanel() {
         </div>
       )}
 
-      {/* History */}
+      {/* Historial persistente */}
       {history.length > 1 && (
         <div>
-          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>Historial</div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            Historial ({history.length - 1} anteriores)
+          </div>
           {history.slice(1).map((item, i) => (
             <div key={i} className="card" style={{ marginBottom: '0.75rem', opacity: 0.65 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-primary)', marginBottom: '0.4rem' }}>❓ {item.question}</div>
