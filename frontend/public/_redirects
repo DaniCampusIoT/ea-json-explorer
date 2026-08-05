@@ -1,6 +1,4 @@
-# Cloudflare Pages: redirigir /api/* al backend de Render
-# Sustituye la URL por la que te asigne Render tras el primer deploy
-/api/*  https://ea-explorer-backend.onrender.com/api/:splat  200
-
-# SPA fallback — todas las rutas al index.html
-/*      /index.html   200
+# Railway sirve el frontend con su propio dominio.
+# El frontend llama al backend mediante VITE_API_URL en tiempo de build.
+# Este archivo es solo fallback SPA para Cloudflare Pages si se usa.
+/*  /index.html  200

@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  // En produccion el proxy lo hace Cloudflare Pages (_redirects).
-  // En desarrollo local sigue usando el backend en :8000.
   server: {
     proxy: mode === 'development' ? {
       '/api': 'http://localhost:8000'
@@ -13,4 +11,10 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
   },
+  // En produccion VITE_API_URL apunta al backend de Railway
+  define: {
+    __API_BASE__: JSON.stringify(
+      process.env.VITE_API_URL || ''
+    )
+  }
 }))
