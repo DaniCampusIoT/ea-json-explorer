@@ -19,10 +19,83 @@ function mdToHtml(md) {
     || `<p>${md}</p>`
 }
 
+// ── Componente: conectividad del bloque ──────────────────────────
+function BlockConnectivity({ blockId, project, onNavigate }) {
+  const { connectors = [], idMap = {}, blocks = [] } = project
+
+  // Conectores donde este bloque es fuente O destino
+  const related = connectors.filter(c =>
+    c.source === blockId || c.target === blockId ||
+    c.source === idMap[blockId]?.id || c.target === idMap[blockId]?.id
+  )
+
+  if (related.length === 0) return null
+
+  // Agrupar por dirección
+  const outgoing = related.filter(c => c.source === blockId)
+  const incoming = related.filter(c => c.target === blockId)
+  const both     = related.filter(c => c.source === blockId && c.target === blockId)
+
+  function BlockChip({ id, label }) {
+    const blk = blocks.find(b => b.id === id)
+    const name = label || idMap[id]?.name || id?.slice(0, 16) || '?'
+    return (
+      <button onClick={() => blk && onNavigate(`/summary/${blk.id}`)}
+        disabled={!blk}
+        style={{
+          padding: '0.3rem 0.65rem', borderRadius: '999px', fontSize: '0.76rem',
+          border: '1px solid var(--color-border)',
+          background: blk ? 'var(--color-surface)' : 'var(--color-bg)',
+          color: blk ? 'var(--color-primary)' : 'var(--color-text-muted)',
+          cursor: blk ? 'pointer' : 'default',
+          fontWeight: blk ? 600 : 400,
+        }}>
+        {name}
+      </button>
+    )
+  }
+
+  const rows = [
+    { label: '→ Sale hacia', items: outgoing,  icon: '🟢' },
+    { label: '← Entra desde', items: incoming, icon: '🟡' },
+  ].filter(r => r.items.length > 0)
+
+  return (
+    <div className="card" style={{ marginBottom: '1rem' }}>
+      <div className="card-title">🔗 Conectividad ({related.length})</div>
+      {rows.map(({ label, items, icon }) => (
+        <div key={label} style={{ marginTop: '0.6rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-muted)',
+            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
+            {icon} {label}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+            {items.map((c, i) => {
+              const peerId = c.source === blockId ? c.target : c.source
+              return <BlockChip key={i} id={peerId} />
+            })}
+          </div>
+          {items.some(c => c.name) && (
+            <div style={{ marginTop: '0.3rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+              {items.filter(c => c.name).map((c, i) => (
+                <span key={i} style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)',
+                  background: 'var(--color-surface-offset)', padding: '0.1rem 0.4rem',
+                  borderRadius: '0.25rem' }}>
+                  {c.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Summary() {
   const { blockId } = useParams()
   const navigate    = useNavigate()
-  const { project } = useAI()   // ← fuente de verdad React
+  const { project } = useAI()
 
   const [block,          setBlock]          = useState(null)
   const [loadingBlock,   setLoadingBlock]   = useState(false)
@@ -42,12 +115,11 @@ export default function Summary() {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setBlock(data))
       .catch(() => {
-        // Fallback: buscar en el proyecto del contexto
         const found = (project.blocks || []).find(b => b.id === blockId) || null
         setBlock(found)
       })
       .finally(() => setLoadingBlock(false))
-  }, [blockId, project])   // ← re-ejecuta si cambia el proyecto
+  }, [blockId, project])
 
   async function generateSummary() {
     setLoadingSummary(true); setAiError(null)
@@ -55,7 +127,7 @@ export default function Summary() {
       const res = await fetch(`/api/blocks/${blockId}/summary`)
       if (!res.ok) throw new Error(await res.text())
       setSummary(await res.json())
-    } catch { setAiError('No se pudo generar el resumen IA. ¿Está el backend corriendo con OPENAI_API_KEY?') }
+    } catch { setAiError('No se pudo generar el resumen IA.') }
     finally  { setLoadingSummary(false) }
   }
 
@@ -137,6 +209,7 @@ export default function Summary() {
         </div>
       </div>
 
+      {/* ─ Documentación */}
       {block.documentation && (
         <div className="card" style={{marginBottom:'1rem'}}>
           <div className="card-title">📔 Documentación</div>
@@ -144,6 +217,7 @@ export default function Summary() {
         </div>
       )}
 
+      {/* ─ Puertos */}
       {ports.length > 0 && (
         <div className="card" style={{marginBottom:'1rem'}}>
           <div className="card-title">🔌 Puertos ({ports.length})</div>
@@ -153,6 +227,10 @@ export default function Summary() {
         </div>
       )}
 
+      {/* ─ CONECTIVIDAD (nueva) */}
+      <BlockConnectivity blockId={blockId} project={project} onNavigate={navigate} />
+
+      {/* ─ Acciones IA */}
       <div style={{display:'flex',gap:'0.75rem',marginBottom:'1rem',flexWrap:'wrap'}}>
         <button className="btn btn-primary" onClick={generateSummary} disabled={loadingSummary}>
           {loadingSummary ? '⏳ Generando…' : '🤖 Resumen IA'}
@@ -189,8 +267,10 @@ export default function Summary() {
             <p style={{lineHeight:1.6,padding:'0.5rem',background:'var(--color-surface-offset)',borderRadius:'0.375rem'}}>{imageData.prompt_used}</p>
           </details>
           <div style={{display:'flex',gap:'0.5rem',marginTop:'0.75rem'}}>
-            <a href={imageData.image_url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost" style={{fontSize:'0.78rem'}}>🔗 Abrir</a>
-            <button className="btn btn-ghost" style={{fontSize:'0.78rem'}} onClick={() => navigator.clipboard.writeText(imageData.image_url)}>📋 Copiar URL</button>
+            <a href={imageData.image_url} target="_blank" rel="noopener noreferrer"
+              className="btn btn-ghost" style={{fontSize:'0.78rem'}}>🔗 Abrir</a>
+            <button className="btn btn-ghost" style={{fontSize:'0.78rem'}}
+              onClick={() => navigator.clipboard.writeText(imageData.image_url)}>📋 Copiar URL</button>
           </div>
         </div>
       )}
@@ -211,7 +291,8 @@ export default function Summary() {
         <div key={i} className="card" style={{marginBottom:'0.75rem'}}>
           <div className="card-title">🎨 Prompt visual</div>
           <p style={{fontSize:'0.85rem',lineHeight:1.7,marginBottom:'0.75rem'}}>{p}</p>
-          <button className="btn btn-ghost" style={{fontSize:'0.78rem'}} onClick={() => navigator.clipboard.writeText(p)}>📋 Copiar</button>
+          <button className="btn btn-ghost" style={{fontSize:'0.78rem'}}
+            onClick={() => navigator.clipboard.writeText(p)}>📋 Copiar</button>
         </div>
       ))}
     </div>

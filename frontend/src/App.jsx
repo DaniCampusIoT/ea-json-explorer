@@ -10,6 +10,8 @@ import Ingest from './views/Ingest'
 import Explorer from './views/Explorer'
 import Summary from './views/Summary'
 import AIPanel from './views/AIPanel'
+import PortsTable from './views/PortsTable'
+import BlockDiagram from './views/BlockDiagram'
 
 export default function App() {
   const [projectStats, setProjectStats] = useState(null)
@@ -39,15 +41,15 @@ export default function App() {
               <GlobalSearch />
 
               {projectStats && (
-                <div style={{ display:'flex', alignItems:'center', gap:'1rem',
-                  fontSize:'0.8rem', color:'var(--color-text-muted)' }}>
+                <div style={{display:'flex',alignItems:'center',gap:'1rem',
+                  fontSize:'0.8rem',color:'var(--color-text-muted)'}}>
                   {projectStats.projectName && (
                     <span style={{
-                      fontWeight:600, color:'var(--color-primary)',
+                      fontWeight:600,color:'var(--color-primary)',
                       background:'var(--color-primary-highlight)',
-                      padding:'0.2rem 0.6rem', borderRadius:'999px',
-                      fontSize:'0.78rem', maxWidth:'200px',
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      padding:'0.2rem 0.6rem',borderRadius:'999px',
+                      fontSize:'0.78rem',maxWidth:'200px',
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
                     }} title={projectStats.projectName}>
                       📁 {projectStats.projectName}
                     </span>
@@ -58,13 +60,13 @@ export default function App() {
                 </div>
               )}
 
-              <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'0.75rem' }}>
+              <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:'0.75rem'}}>
                 <ThemeToggle />
                 {user && (
                   <div className="header-user">
                     {user.picture && (
                       <img src={user.picture} alt="avatar" width="28" height="28"
-                        style={{ borderRadius:'50%', objectFit:'cover' }} />
+                        style={{borderRadius:'50%',objectFit:'cover'}} />
                     )}
                     <span className="header-user-name">{user.name || user.sub}</span>
                     <button className="btn-logout" onClick={logout}
@@ -82,11 +84,13 @@ export default function App() {
             </header>
 
             <nav className="app-sidebar">
-              <div style={{ fontSize:'0.7rem', fontWeight:600, textTransform:'uppercase',
-                letterSpacing:'0.08em', color:'var(--color-text-muted)',
-                marginBottom:'0.75rem', paddingLeft:'0.5rem' }}>Navegación</div>
+              <div style={{fontSize:'0.7rem',fontWeight:600,textTransform:'uppercase',
+                letterSpacing:'0.08em',color:'var(--color-text-muted)',
+                marginBottom:'0.75rem',paddingLeft:'0.5rem'}}>Navegación</div>
               <NavLink to="/"         className="nav-link">⬆️ Cargar proyecto</NavLink>
               <NavLink to="/explorer" className="nav-link">🗂 Explorador</NavLink>
+              <NavLink to="/diagram"  className="nav-link">🗢️ Diagrama</NavLink>
+              <NavLink to="/ports"    className="nav-link">🔌 Puertos</NavLink>
               <NavLink to="/summary"  className="nav-link">📋 Resúmenes</NavLink>
               <NavLink to="/ai"       className="nav-link">🤖 Panel IA</NavLink>
             </nav>
@@ -94,8 +98,10 @@ export default function App() {
             <main className="app-main">
               <RouteTransition>
                 <Routes>
-                  <Route path="/"                  element={<Ingest onLoaded={setProjectStats} />} />
+                  <Route path="/"                  element={<Ingest   onLoaded={setProjectStats} />} />
                   <Route path="/explorer"          element={<Explorer />} />
+                  <Route path="/diagram"           element={<BlockDiagram />} />
+                  <Route path="/ports"             element={<PortsTable />} />
                   <Route path="/summary/:blockId?" element={<Summary />} />
                   <Route path="/ai"                element={<AIPanel />} />
                 </Routes>
