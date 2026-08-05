@@ -1,0 +1,6 @@
+# Cloudflare Pages: redirigir /api/* al backend de Render
+# Sustituye la URL por la que te asigne Render tras el primer deploy
+/api/*  https://ea-explorer-backend.onrender.com/api/:splat  200
+
+# SPA fallback — todas las rutas al index.html
+/*      /index.html   200

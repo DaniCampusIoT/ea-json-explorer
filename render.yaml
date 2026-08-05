@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ea-explorer-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false          # se rellena manualmente en el dashboard de Render
+    autoDeploy: true
