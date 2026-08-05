@@ -3,7 +3,9 @@
  * Guarda el JWT interno en sessionStorage.
  */
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
+const BACKEND = import.meta.env.VITE_BACKEND_URL
+             || import.meta.env.VITE_API_URL
+             || ''
 const TOKEN_KEY = 'ea_auth_token'
 
 export function loginWithGoogle() {
@@ -53,7 +55,6 @@ export function handleCallbackToken() {
 
   if (token) {
     sessionStorage.setItem(TOKEN_KEY, token)
-    // Limpia la URL sin recargar
     window.history.replaceState({}, '', window.location.pathname)
     return { token }
   }
