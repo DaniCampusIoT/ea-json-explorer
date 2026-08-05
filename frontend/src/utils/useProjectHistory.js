@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const STORAGE_KEY = 'arcana-recent-projects-v2'  // v2 — evita conflictos con snapshots corruptos anteriores
+const STORAGE_KEY = 'arcana-recent-v3'
 const MAX_PROJECTS = 5
 
 export function useProjectHistory() {
@@ -38,17 +38,10 @@ export function useProjectHistory() {
     })
   }
 
-  /** Restaura window.eaProject desde el snapshot y devuelve la entrada. */
-  function loadProject(entry) {
-    window.eaProject = { ...entry.project }
-    return entry
-  }
-
   function removeProject(name) {
     setHistory(prev => {
       const next = prev.filter(p => p.name !== name)
-      _persist(next)
-      return next
+      _persist(next); return next
     })
   }
 
@@ -57,5 +50,5 @@ export function useProjectHistory() {
     try { localStorage.removeItem(STORAGE_KEY) } catch {}
   }
 
-  return { history, saveProject, loadProject, removeProject, clearHistory }
+  return { history, saveProject, removeProject, clearHistory }
 }

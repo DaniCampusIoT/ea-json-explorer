@@ -1,22 +1,30 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 
 /**
- * Contexto global compartido.
+ * Contexto global compartido:
+ * - project: objeto { packages, blocks, connectors, ports, idMap } — fuente de verdad única
+ * - setProject: actualiza el proyecto y fuerza re-render en todos los consumidores
  * - historial de conversación IA (persistente entre rutas)
- * - projectVersion: incrementar fuerza re-render de Explorer/Summary
  */
 const AIContext = createContext(null)
 
-export function AIProvider({ children }) {
-  const [history,        setHistory]        = useState([])
-  const [answer,         setAnswer]         = useState(null)
-  const [loading,        setLoading]        = useState(false)
-  const [error,          setError]          = useState(null)
-  const [projectVersion, setProjectVersion] = useState(0)
+const EMPTY_PROJECT = { packages: [], blocks: [], connectors: [], ports: [], idMap: {} }
 
-  /** Llama a esto siempre que se cambie window.eaProject (carga nueva o reciente). */
-  const bumpProject = useCallback(() => {
-    setProjectVersion(v => v + 1)
+export function AIProvider({ children }) {
+  const [project, setProjectState] = useState(EMPTY_PROJECT)
+  const [history, setHistory]      = useState([])
+  const [answer,  setAnswer]       = useState(null)
+  const [loading, setLoading]      = useState(false)
+  const [error,   setError]        = useState(null)
+
+  /**
+   * Actualiza el proyecto activo.
+   * Escribe también en window.eaProject para compatibilidad con código legacy.
+   */
+  const setProject = useCallback((proj) => {
+    const safe = proj || EMPTY_PROJECT
+    window.eaProject = { ...safe }   // compat legacy
+    setProjectState(safe)
   }, [])
 
   async function ask(question) {
@@ -43,14 +51,12 @@ export function AIProvider({ children }) {
     }
   }
 
-  function clearHistory() {
-    setHistory([]); setAnswer(null); setError(null)
-  }
+  function clearHistory() { setHistory([]); setAnswer(null); setError(null) }
 
   return (
     <AIContext.Provider value={{
+      project, setProject,
       history, answer, loading, error, ask, clearHistory,
-      projectVersion, bumpProject,
     }}>
       {children}
     </AIContext.Provider>
