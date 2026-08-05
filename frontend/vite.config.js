@@ -1,20 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const BACKEND = process.env.VITE_API_URL || 'http://localhost:8000'
+
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
-    proxy: mode === 'development' ? {
-      '/api': 'http://localhost:8000'
-    } : undefined
+    proxy: {
+      '/api': {
+        target: BACKEND,
+        changeOrigin: true,
+      }
+    }
   },
   build: {
     outDir: 'dist',
   },
-  // En produccion VITE_API_URL apunta al backend de Railway
   define: {
-    __API_BASE__: JSON.stringify(
-      process.env.VITE_API_URL || ''
-    )
+    __API_BASE__: JSON.stringify(mode === 'production' ? BACKEND : '')
   }
 }))
