@@ -3,11 +3,10 @@
  * Guarda el JWT interno en sessionStorage.
  */
 
-// VITE_API_URL lleva desde el primer deploy en el bundle.
-// VITE_BACKEND_URL es el alias nuevo — se usa si existe.
-const BACKEND = import.meta.env.VITE_API_URL
-             || import.meta.env.VITE_BACKEND_URL
-             || ''
+const BACKEND =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_BACKEND_URL ||
+  'https://ea-explorer-backend-production.up.railway.app'
 
 const TOKEN_KEY = 'ea_auth_token'
 
@@ -45,11 +44,6 @@ export function getUser() {
   }
 }
 
-/**
- * Lee ?token= o ?auth_error= de la URL tras el callback de Google.
- * Limpia los parámetros de la URL en ambos casos.
- * Devuelve { token } | { error, email } | null
- */
 export function handleCallbackToken() {
   const params = new URLSearchParams(window.location.search)
   const token  = params.get('token')
