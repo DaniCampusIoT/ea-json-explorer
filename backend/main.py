@@ -29,7 +29,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:4173"],
+    allow_origins=[
+        # Local dev
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:4173",
+        # Railway produccion
+        "https://ea-json-explorer-production.up.railway.app",
+        "https://ea-explorer-backend-production.up.railway.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
