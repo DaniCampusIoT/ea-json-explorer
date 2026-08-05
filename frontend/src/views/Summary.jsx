@@ -19,73 +19,76 @@ function mdToHtml(md) {
     || `<p>${md}</p>`
 }
 
-// ── Componente: conectividad del bloque ──────────────────────────
+// ── Conectividad ──────────────────────────────────────
 function BlockConnectivity({ blockId, project, onNavigate }) {
-  const { connectors = [], idMap = {}, blocks = [] } = project
+  const { connectors = [], idMap = {}, blocks = [], ports = [] } = project
 
-  // Conectores donde este bloque es fuente O destino
+  // Los extremos de los conectores son IDs de puertos
+  // Obtener todos los puertos de este bloque
+  const myPortIds = new Set(ports.filter(p => p.parentId === blockId).map(p => p.id))
+  // Incluir también el propio blockId por si conector va directo al bloque
+  myPortIds.add(blockId)
+
   const related = connectors.filter(c =>
-    c.source === blockId || c.target === blockId ||
-    c.source === idMap[blockId]?.id || c.target === idMap[blockId]?.id
+    myPortIds.has(c.source) || myPortIds.has(c.target)
   )
-
   if (related.length === 0) return null
 
-  // Agrupar por dirección
-  const outgoing = related.filter(c => c.source === blockId)
-  const incoming = related.filter(c => c.target === blockId)
-  const both     = related.filter(c => c.source === blockId && c.target === blockId)
+  // Resolver ID (puerto o bloque) -> bloque
+  function resolveBlock(id) {
+    if (id === blockId) return null  // es el propio
+    const entry = idMap[id]
+    if (!entry) return null
+    if (entry.type === 'uml:Port') {
+      const parent = idMap[entry.parentId]
+      return (parent?.type === 'uml:Class' || parent?.type === 'uml:Component') &&
+             parent.id !== blockId ? parent : null
+    }
+    return (entry.type === 'uml:Class' || entry.type === 'uml:Component') &&
+           entry.id !== blockId ? entry : null
+  }
 
-  function BlockChip({ id, label }) {
-    const blk = blocks.find(b => b.id === id)
-    const name = label || idMap[id]?.name || id?.slice(0, 16) || '?'
-    return (
-      <button onClick={() => blk && onNavigate(`/summary/${blk.id}`)}
-        disabled={!blk}
-        style={{
-          padding: '0.3rem 0.65rem', borderRadius: '999px', fontSize: '0.76rem',
-          border: '1px solid var(--color-border)',
-          background: blk ? 'var(--color-surface)' : 'var(--color-bg)',
-          color: blk ? 'var(--color-primary)' : 'var(--color-text-muted)',
-          cursor: blk ? 'pointer' : 'default',
-          fontWeight: blk ? 600 : 400,
-        }}>
-        {name}
-      </button>
-    )
+  // Deduplicar: pares únicos de (bloque peer, dirección)
+  const outPeers = new Map(), inPeers = new Map()
+  for (const c of related) {
+    const isSrc = myPortIds.has(c.source)
+    const peerId = isSrc ? c.target : c.source
+    const peer = resolveBlock(peerId)
+    if (!peer) continue
+    if (isSrc) outPeers.set(peer.id, peer)
+    else       inPeers.set(peer.id, peer)
   }
 
   const rows = [
-    { label: '→ Sale hacia', items: outgoing,  icon: '🟢' },
-    { label: '← Entra desde', items: incoming, icon: '🟡' },
-  ].filter(r => r.items.length > 0)
+    { label:'→ Sale hacia',  peers: [...outPeers.values()], icon:'🟢' },
+    { label:'← Entra desde', peers: [...inPeers.values()],  icon:'🟡' },
+  ].filter(r => r.peers.length > 0)
+
+  if (rows.length === 0) return null
 
   return (
-    <div className="card" style={{ marginBottom: '1rem' }}>
-      <div className="card-title">🔗 Conectividad ({related.length})</div>
-      {rows.map(({ label, items, icon }) => (
-        <div key={label} style={{ marginTop: '0.6rem' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--color-text-muted)',
-            textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.4rem' }}>
-            {icon} {label}
+    <div className="card" style={{marginBottom:'1rem'}}>
+      <div className="card-title">🔗 Conectividad</div>
+      {rows.map(({ label, peers, icon }) => (
+        <div key={label} style={{marginTop:'0.6rem'}}>
+          <div style={{fontSize:'0.72rem',fontWeight:700,color:'var(--color-text-muted)',
+            textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:'0.4rem'}}>
+            {icon} {label} ({peers.length})
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-            {items.map((c, i) => {
-              const peerId = c.source === blockId ? c.target : c.source
-              return <BlockChip key={i} id={peerId} />
-            })}
+          <div style={{display:'flex',flexWrap:'wrap',gap:'0.35rem'}}>
+            {peers.map(peer => (
+              <button key={peer.id}
+                onClick={() => onNavigate(`/summary/${peer.id}`)}
+                style={{
+                  padding:'0.3rem 0.65rem',borderRadius:'999px',fontSize:'0.76rem',
+                  border:'1px solid var(--color-border)',
+                  background:'var(--color-surface)',color:'var(--color-primary)',
+                  cursor:'pointer',fontWeight:600,
+                }}>
+                {peer.name || peer.id.slice(0,16)}
+              </button>
+            ))}
           </div>
-          {items.some(c => c.name) && (
-            <div style={{ marginTop: '0.3rem', display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-              {items.filter(c => c.name).map((c, i) => (
-                <span key={i} style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)',
-                  background: 'var(--color-surface-offset)', padding: '0.1rem 0.4rem',
-                  borderRadius: '0.25rem' }}>
-                  {c.name}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       ))}
     </div>
@@ -130,7 +133,6 @@ export default function Summary() {
     } catch { setAiError('No se pudo generar el resumen IA.') }
     finally  { setLoadingSummary(false) }
   }
-
   async function generatePrompt() {
     setLoadingPrompt(true); setAiError(null)
     try {
@@ -140,12 +142,11 @@ export default function Summary() {
     } catch { setAiError('No se pudo generar el prompt visual.') }
     finally  { setLoadingPrompt(false) }
   }
-
   async function generateImage() {
     setLoadingImage(true); setAiError(null); setImageData(null)
     try {
       const res = await fetch(`/api/blocks/${blockId}/image`)
-      if (!res.ok) { const e = await res.json().catch(() => ({ detail: res.statusText })); throw new Error(e.detail) }
+      if (!res.ok) { const e = await res.json().catch(() => ({detail:res.statusText})); throw new Error(e.detail) }
       setImageData(await res.json())
     } catch (e) { setAiError(`No se pudo generar la imagen: ${e.message}`) }
     finally    { setLoadingImage(false) }
@@ -156,34 +157,23 @@ export default function Summary() {
   const parentName = idMap[block?.parentId || block?.parent_id]?.name
   const canExport  = !!(block?.documentation || summary)
 
-  function handleExportMD() {
-    const md = buildBlockMarkdown({ block, summary, ports, parentName })
-    exportMarkdown(`${block.name}-arcana`, md)
-  }
-  function handleExportPDF() {
-    const md = buildBlockMarkdown({ block, summary, ports, parentName })
-    exportPDF(block.name, mdToHtml(md))
-  }
+  function handleExportMD()  { const md = buildBlockMarkdown({ block, summary, ports, parentName }); exportMarkdown(`${block.name}-arcana`, md) }
+  function handleExportPDF() { const md = buildBlockMarkdown({ block, summary, ports, parentName }); exportPDF(block.name, mdToHtml(md)) }
 
   if (!blockId) return (
-    <div className="empty-state">
-      <span style={{fontSize:'3rem'}}>📋</span>
-      <p>Selecciona un bloque desde el <strong>Explorador</strong>.</p>
-    </div>
+    <div className="empty-state"><span style={{fontSize:'3rem'}}>📋</span>
+      <p>Selecciona un bloque desde el <strong>Explorador</strong>.</p></div>
   )
   if (loadingBlock) return (
     <div style={{maxWidth:'820px',display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-      <Skeleton width="40%" height="1.6rem" />
-      <Skeleton width="25%" height="1rem" />
+      <Skeleton width="40%" height="1.6rem" /><Skeleton width="25%" height="1rem" />
     </div>
   )
   if (!block) return (
-    <div className="empty-state">
-      <span style={{fontSize:'3rem'}}>🔍</span>
+    <div className="empty-state"><span style={{fontSize:'3rem'}}>🔍</span>
       <p>Bloque no encontrado.
         <button className="btn btn-ghost" onClick={() => navigate('/explorer')}>Volver al explorador</button>
-      </p>
-    </div>
+      </p></div>
   )
 
   return (
@@ -209,7 +199,6 @@ export default function Summary() {
         </div>
       </div>
 
-      {/* ─ Documentación */}
       {block.documentation && (
         <div className="card" style={{marginBottom:'1rem'}}>
           <div className="card-title">📔 Documentación</div>
@@ -217,7 +206,6 @@ export default function Summary() {
         </div>
       )}
 
-      {/* ─ Puertos */}
       {ports.length > 0 && (
         <div className="card" style={{marginBottom:'1rem'}}>
           <div className="card-title">🔌 Puertos ({ports.length})</div>
@@ -227,21 +215,16 @@ export default function Summary() {
         </div>
       )}
 
-      {/* ─ CONECTIVIDAD (nueva) */}
       <BlockConnectivity blockId={blockId} project={project} onNavigate={navigate} />
 
-      {/* ─ Acciones IA */}
       <div style={{display:'flex',gap:'0.75rem',marginBottom:'1rem',flexWrap:'wrap'}}>
         <button className="btn btn-primary" onClick={generateSummary} disabled={loadingSummary}>
-          {loadingSummary ? '⏳ Generando…' : '🤖 Resumen IA'}
-        </button>
+          {loadingSummary ? '⏳ Generando…' : '🤖 Resumen IA'}</button>
         <button className="btn btn-ghost" onClick={generatePrompt} disabled={loadingPrompt}>
-          {loadingPrompt ? '⏳ Generando…' : '🎨 Prompt visual'}
-        </button>
+          {loadingPrompt ? '⏳ Generando…' : '🎨 Prompt visual'}</button>
         <button className="btn btn-ghost" onClick={generateImage} disabled={loadingImage}
           style={{borderColor:'var(--color-primary)',color:'var(--color-primary)'}}>
-          {loadingImage ? '⏳ Generando imagen…' : '🖼️ Generar imagen'}
-        </button>
+          {loadingImage ? '⏳ Generando imagen…' : '🖼️ Generar imagen'}</button>
       </div>
 
       {aiError && (
@@ -250,7 +233,6 @@ export default function Summary() {
           ⚠️ {aiError}
         </div>
       )}
-
       {loadingImage && (
         <div className="card" style={{marginBottom:'1.25rem',textAlign:'center',padding:'2rem'}}>
           <div style={{fontSize:'2rem',marginBottom:'0.5rem'}}>🎨</div>
@@ -274,7 +256,6 @@ export default function Summary() {
           </div>
         </div>
       )}
-
       {loadingSummary && (
         <div className="card" style={{marginBottom:'1.25rem',display:'flex',flexDirection:'column',gap:'0.5rem'}}>
           {[100,90,80,70,55].map((w,i) => <Skeleton key={i} width={`${w}%`} height="0.85rem" />)}
@@ -286,7 +267,6 @@ export default function Summary() {
           <MarkdownView>{summary.summary}</MarkdownView>
         </div>
       )}
-
       {prompts && prompts.map((p, i) => (
         <div key={i} className="card" style={{marginBottom:'0.75rem'}}>
           <div className="card-title">🎨 Prompt visual</div>
