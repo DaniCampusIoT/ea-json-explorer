@@ -23,6 +23,7 @@
   --color-primary-hover:  #0c4e54;
   --color-error:          #a12c7b;
   --color-error-highlight:#e0ced7;
+  --color-primary-highlight: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
 
   --radius-sm: 0.375rem; --radius-md: 0.5rem;
   --radius-lg: 0.75rem;  --radius-xl: 1rem;
@@ -310,3 +311,161 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   .app-main { padding: var(--space-4); }
   .header-user-name { display: none; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   ── .md-body  —  Renderizado visual de respuestas Markdown / IA ──
+   ══════════════════════════════════════════════════════════════════════ */
+.md-body {
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: var(--color-text);
+}
+
+/* Encabezados */
+.md-body h1,
+.md-body h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+.md-body h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-top: 1rem;
+  margin-bottom: 0.3rem;
+  letter-spacing: 0.01em;
+}
+.md-body h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Párrafos y separadores */
+.md-body p { margin-bottom: 0.65rem; }
+.md-body hr {
+  border: none;
+  border-top: 1px solid var(--color-divider);
+  margin: 1rem 0;
+}
+
+/* Listas */
+.md-body ul,
+.md-body ol {
+  padding-left: 1.25rem;
+  margin-bottom: 0.65rem;
+}
+.md-body li { margin-bottom: 0.2rem; }
+.md-body li > ul,
+.md-body li > ol { margin-top: 0.2rem; margin-bottom: 0; }
+
+/* Negritas e itálicas */
+.md-body strong { font-weight: 600; color: var(--color-text); }
+.md-body em { font-style: italic; color: var(--color-text-muted); }
+
+/* Código inline */
+.md-body code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8em;
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-offset));
+  color: var(--color-primary);
+  padding: 0.1em 0.4em;
+  border-radius: 0.25rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* Bloques de código */
+.md-body pre {
+  background: var(--color-surface-offset);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+.md-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-text);
+  font-size: 0.82rem;
+}
+
+/* Citas */
+.md-body blockquote {
+  border-left: 3px solid var(--color-primary);
+  padding: 0.4rem 0.875rem;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 0.65rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ── Tablas GFM ──────────────────────────────────────────────────── */
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.875rem;
+  font-size: 0.82rem;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+.md-body thead tr {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+.md-body thead th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  border-bottom: 1.5px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  white-space: nowrap;
+}
+.md-body tbody tr {
+  border-bottom: 1px solid var(--color-divider);
+  transition: background var(--transition);
+}
+.md-body tbody tr:last-child { border-bottom: none; }
+.md-body tbody tr:hover {
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+}
+.md-body tbody td {
+  padding: 0.45rem 0.75rem;
+  vertical-align: top;
+  color: var(--color-text);
+}
+.md-body tbody td:first-child { font-weight: 500; }
+
+/* Dark mode para tablas */
+[data-theme="dark"] .md-body thead tr {
+  background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
+}
+[data-theme="dark"] .md-body tbody tr:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+/* ── Variante compacta (historial) ──────────────────────────────── */
+.md-body.md-body--compact {
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.md-body.md-body--compact h2,
+.md-body.md-body--compact h3 {
+  font-size: 0.78rem;
+  margin-top: 0.5rem;
+}
+.md-body.md-body--compact table { font-size: 0.75rem; }
+
+/* Primer elemento sin margen superior */
+.md-body > *:first-child { margin-top: 0; }
