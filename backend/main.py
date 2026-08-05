@@ -24,7 +24,7 @@ from auth.google import router as google_router
 app = FastAPI(
     title="EA JSON Explorer",
     description="Explorador y analizador IA de proyectos Enterprise Architect",
-    version="0.4.1",
+    version="0.5.0",
 )
 
 app.add_middleware(
@@ -42,7 +42,6 @@ _summarizer: Summarizer = Summarizer()
 
 
 def _is_xml(raw: bytes) -> bool:
-    """Detecta si el contenido es XML real mirando el primer byte significativo."""
     sniff = raw.lstrip(b' \t\r\n\xef\xbb\xbf\xff\xfe\xfe\xff')
     return sniff[:1] == b'<'
 
@@ -53,7 +52,6 @@ async def ingest(file: UploadFile = File(...)):
 
     raw = await file.read()
 
-    # Detecta por CONTENIDO, no por extensión (cubre archivos .xml con JSON dentro)
     if _is_xml(raw):
         try:
             data = xml_to_dict(raw)
@@ -91,6 +89,20 @@ def list_packages():
 def list_blocks():
     _require_graph()
     return [b.to_dict() for b in _graph.blocks.values()]
+
+
+@app.get("/api/ports")
+def list_ports():
+    """Devuelve todos los puertos con owner_id resuelto al bloque padre."""
+    _require_graph()
+    return [p.to_dict() for p in _graph.ports.values()]
+
+
+@app.get("/api/connectors")
+def list_connectors():
+    """Devuelve todos los conectores."""
+    _require_graph()
+    return [c.to_dict() for c in _graph.connectors.values()]
 
 
 @app.get("/api/blocks/{block_id}")
@@ -156,6 +168,7 @@ def health():
         "ai_ready": _summarizer.client is not None,
         "packages": len(_graph.packages) if _graph else 0,
         "blocks":   len(_graph.blocks)   if _graph else 0,
+        "ports":    len(_graph.ports)    if _graph else 0,
     }
 
 

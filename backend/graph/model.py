@@ -75,7 +75,8 @@ class Block:
 class Port:
     id: str
     name: str
-    owner_id: Optional[str] = None
+    owner_id: Optional[str] = None        # ID del attr/part inmediato
+    block_owner_id: Optional[str] = None  # ID del bloque padre resuelto
     direction: Optional[str] = None
     documentation: str = ""
     raw: dict = field(default_factory=dict, repr=False)
@@ -84,7 +85,7 @@ class Port:
         return {
             "id": self.id,
             "name": self.name,
-            "owner_id": self.owner_id,
+            "owner_id": self.block_owner_id or self.owner_id,  # siempre devolver el bloque
             "direction": self.direction,
             "documentation": self.documentation,
         }
@@ -143,10 +144,6 @@ class ProjectGraph:
         self.connectors: dict[str, Connector] = {}
         self.nx_graph: nx.DiGraph = nx.DiGraph()
 
-    # ------------------------------------------------------------------
-    # Adición de entidades
-    # ------------------------------------------------------------------
-
     def add_package(self, p: Package):
         self.packages[p.id] = p
 
@@ -169,15 +166,32 @@ class ProjectGraph:
                 label=c.label,
             )
 
-    # ------------------------------------------------------------------
-    # Resolución de relaciones
-    # ------------------------------------------------------------------
-
     def resolve_relationships(self):
-        """Asigna puertos y partes a sus bloques propietarios."""
+        """Asigna puertos y partes a sus bloques propietarios.
+
+        En formato ART los puertos pertenecen a un 'attr' (Part), no al bloque
+        directamente. Resolvemos la cadena: port.owner_id -> part.owner_id -> block.
+        Guardamos el bloque en port.block_owner_id.
+        """
+        # Construir mapa part_id -> block_id
+        part_to_block: dict[str, str] = {}
+        for part in self.parts.values():
+            if part.owner_id and part.owner_id in self.blocks:
+                part_to_block[part.id] = part.owner_id
+
+        # Asignar puertos a bloques
         for port in self.ports.values():
-            if port.owner_id and port.owner_id in self.blocks:
-                self.blocks[port.owner_id].port_ids.append(port.id)
+            oid = port.owner_id or ""
+            if oid in self.blocks:
+                # Puerto directo de bloque (formato XMI clásico)
+                port.block_owner_id = oid
+                self.blocks[oid].port_ids.append(port.id)
+            elif oid in part_to_block:
+                # Puerto de un attr -> resolver al bloque padre
+                block_id = part_to_block[oid]
+                port.block_owner_id = block_id
+                self.blocks[block_id].port_ids.append(port.id)
+            # Si no se resuelve, block_owner_id queda None
 
         for part in self.parts.values():
             if part.owner_id and part.owner_id in self.blocks:
@@ -196,19 +210,16 @@ class ProjectGraph:
     # ------------------------------------------------------------------
 
     def build_block_context(self, block: Block) -> str:
-        """Construye un texto de contexto enriquecido para un bloque."""
         lines = []
         lines.append(f"# Bloque: {block.name}")
         lines.append(f"Estereotipo: {block.stereotype}")
         if block.documentation:
             lines.append(f"Documentación: {block.documentation}")
 
-        # Package
         if block.package_id and block.package_id in self.packages:
             pkg = self.packages[block.package_id]
             lines.append(f"Paquete: {pkg.name}")
 
-        # Puertos
         if block.port_ids:
             lines.append("\nPuertos:")
             for pid in block.port_ids:
@@ -217,7 +228,6 @@ class ProjectGraph:
                     dir_str = f" [{p.direction}]" if p.direction else ""
                     lines.append(f"  - {p.name}{dir_str}: {p.documentation}")
 
-        # Partes
         if block.part_ids:
             lines.append("\nPartes internas:")
             for pid in block.part_ids:
@@ -228,12 +238,11 @@ class ProjectGraph:
                         type_name = f" : {self.blocks[pt.type_id].name}"
                     lines.append(f"  - {pt.name}{type_name}: {pt.documentation}")
 
-        # Conexiones
         neighbors = list(self.nx_graph.neighbors(block.id))
         if neighbors:
             lines.append("\nConectado a:")
             for nid in neighbors:
-                nname = self.blocks.get(nid, {}).name if nid in self.blocks else nid
+                nname = self.blocks[nid].name if nid in self.blocks else nid
                 edge = self.nx_graph.edges.get((block.id, nid), {})
                 label = edge.get("label", "")
                 conn_type = edge.get("connector_type", "")
@@ -242,7 +251,6 @@ class ProjectGraph:
         return "\n".join(lines)
 
     def build_project_summary(self) -> str:
-        """Resumen de alto nivel del proyecto completo."""
         return (
             f"Proyecto con {len(self.packages)} paquetes, "
             f"{len(self.blocks)} bloques, "
