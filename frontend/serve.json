@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    { "source": "/auth/**", "destination": "/auth/placeholder" },
+    { "source": "**", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "**",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ]
+}
