@@ -1,5 +1,5 @@
 /**
- * Pantalla de login — diseño mejorado con botón Google.
+ * Pantalla de login — Arcana.
  */
 import React from 'react'
 import { loginWithGoogle } from './googleAuth'
@@ -10,7 +10,7 @@ export default function LoginPage() {
       <div className="login-card">
 
         <div className="login-logo">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-label="EA Explorer logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-label="Arcana logo">
             <rect x="3" y="3" width="8" height="8" rx="2" fill="var(--color-primary)"/>
             <rect x="13" y="3" width="8" height="8" rx="2" fill="var(--color-primary)" opacity="0.55"/>
             <rect x="3" y="13" width="8" height="8" rx="2" fill="var(--color-primary)" opacity="0.55"/>
@@ -19,7 +19,7 @@ export default function LoginPage() {
         </div>
 
         <div className="login-brand">
-          <h1 className="login-title">EA JSON Explorer</h1>
+          <h1 className="login-title">Arcana</h1>
           <p className="login-subtitle">Quandum Aerospaces</p>
         </div>
 

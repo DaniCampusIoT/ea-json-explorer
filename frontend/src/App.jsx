@@ -21,13 +21,13 @@ export default function App() {
         <div className="app-shell">
           {/* Header */}
           <header className="app-header">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-label="EA Explorer logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-label="Arcana logo">
               <rect x="3" y="3" width="8" height="8" rx="1.5" fill="#01696f"/>
               <rect x="13" y="3" width="8" height="8" rx="1.5" fill="#01696f" opacity="0.5"/>
               <rect x="3" y="13" width="8" height="8" rx="1.5" fill="#01696f" opacity="0.5"/>
               <rect x="13" y="13" width="8" height="8" rx="1.5" fill="#01696f" opacity="0.3"/>
             </svg>
-            <h1>EA JSON Explorer</h1>
+            <h1>Arcana</h1>
 
             {projectStats && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
