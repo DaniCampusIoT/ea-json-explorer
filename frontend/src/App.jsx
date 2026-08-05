@@ -30,7 +30,23 @@ export default function App() {
             <h1>EA JSON Explorer</h1>
 
             {projectStats && (
-              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                {projectStats.projectName && (
+                  <span style={{
+                    fontWeight: 600,
+                    color: 'var(--color-primary)',
+                    background: 'var(--color-primary-highlight)',
+                    padding: '0.2rem 0.6rem',
+                    borderRadius: '999px',
+                    fontSize: '0.78rem',
+                    maxWidth: '240px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }} title={projectStats.projectName}>
+                    📁 {projectStats.projectName}
+                  </span>
+                )}
                 <span>📦 {projectStats.packages} paquetes</span>
                 <span>🧱 {projectStats.blocks} bloques</span>
                 <span>🔌 {projectStats.connectors} conectores</span>

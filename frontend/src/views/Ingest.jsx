@@ -38,6 +38,11 @@ function parseEAJson(raw) {
   return { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length }
 }
 
+// Elimina la extensión del nombre de archivo
+function stripExt(filename) {
+  return filename.replace(/\.[^.]+$/, '')
+}
+
 // ─── Component ───
 export default function Ingest({ onLoaded }) {
   const [loading, setLoading]   = useState(false)
@@ -60,6 +65,7 @@ export default function Ingest({ onLoaded }) {
     setResult(null)
 
     const isXml = ext === 'xml' || ext === 'xmi'
+    const projectName = stripExt(file.name)
 
     // Para XML saltamos el parser cliente y vamos directo al backend
     let stats = { packages: 0, blocks: 0, connectors: 0, ports: 0 }
@@ -83,7 +89,7 @@ export default function Ingest({ onLoaded }) {
         const backendStats = await res.json()
         setBackendOk(true)
         stats = backendStats
-        onLoaded(backendStats)
+        onLoaded({ ...backendStats, projectName })
       } else {
         const err = await res.json().catch(() => ({}))
         if (isXml) {
@@ -92,7 +98,7 @@ export default function Ingest({ onLoaded }) {
           return
         }
         setBackendOk(false)
-        onLoaded(stats)
+        onLoaded({ ...stats, projectName })
       }
     } catch {
       if (isXml) {
@@ -101,7 +107,7 @@ export default function Ingest({ onLoaded }) {
         return
       }
       setBackendOk(false)
-      onLoaded(stats)
+      onLoaded({ ...stats, projectName })
     }
 
     setResult(stats)
@@ -167,7 +173,9 @@ export default function Ingest({ onLoaded }) {
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
-            {Object.entries(result).map(([k, v]) => (
+            {Object.entries(result)
+              .filter(([k]) => k !== 'projectName')
+              .map(([k, v]) => (
               <div key={k} style={{ padding: '0.75rem', background: 'var(--color-bg)', borderRadius: '0.375rem', textAlign: 'center' }}>
                 <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>{v}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{statLabels[k] || k}</div>
