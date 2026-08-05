@@ -5,32 +5,35 @@ import { useAI } from '../context/AIContext'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
-/** Normaliza un objeto de proyecto: garantiza que todos los items
- *  tengan siempre `parentId` (nunca solo `parent_id`) y que idMap
- *  contenga también los puertos. */
+/**
+ * Normaliza un proyecto garantizando que TODOS los items tengan `parentId`.
+ * El backend usa:  package.parent_id | block.package_id | port.owner_id
+ * El parser JSON:  parentId en todo
+ * Esta función unifica ambas fuentes.
+ */
 function normalizeProject(proj) {
   if (!proj) return proj
-  function norm(arr) {
-    return (arr || []).map(item => ({
-      ...item,
-      parentId: item.parentId || item.parent_id || null,
-    }))
+
+  function normItem(item, altKey) {
+    const parentId = item.parentId || item.parent_id || item[altKey] || null
+    return { ...item, parentId }
   }
-  const packages   = norm(proj.packages)
-  const blocks     = norm(proj.blocks)
-  const connectors = norm(proj.connectors)
-  const ports      = norm(proj.ports)
 
-  // Reconstruir idMap completo con datos normalizados
-  const idMap = { ...(proj.idMap || {}) }
+  const packages   = (proj.packages   || []).map(p => normItem(p, 'parent_id'))
+  const blocks     = (proj.blocks     || []).map(b => normItem(b, 'package_id'))  // ← clave real del backend
+  const connectors = (proj.connectors || []).map(c => normItem(c, 'parent_id'))
+  const ports      = (proj.ports      || []).map(p => normItem(p, 'owner_id'))    // ← clave real del backend
+
+  // Reconstruir idMap completo con los parentId ya normalizados
+  const idMap = {}
   for (const p of packages)
-    if (p.id) idMap[p.id] = { ...idMap[p.id], type: idMap[p.id]?.type || 'uml:Package', name: p.name, id: p.id, parentId: p.parentId }
+    if (p.id) idMap[p.id] = { type: 'uml:Package', name: p.name || '', id: p.id, parentId: p.parentId }
   for (const b of blocks)
-    if (b.id) idMap[b.id] = { ...idMap[b.id], type: idMap[b.id]?.type || 'uml:Class', name: b.name, id: b.id, parentId: b.parentId }
+    if (b.id) idMap[b.id] = { type: 'uml:Class',   name: b.name || '', id: b.id, parentId: b.parentId }
   for (const p of ports)
-    if (p.id) idMap[p.id] = { ...idMap[p.id], type: 'uml:Port', name: p.name, id: p.id, parentId: p.parentId }
+    if (p.id) idMap[p.id] = { type: 'uml:Port',    name: p.name || '', id: p.id, parentId: p.parentId }
 
-  // Promover bloques-contenedor a packages (si no están ya)
+  // Promover bloques-contenedor a packages si su parentId no está en packages
   const pkgIds   = new Set(packages.map(p => p.id))
   const blockIds = new Set(blocks.map(b => b.id))
   for (const pid of new Set(blocks.map(b => b.parentId).filter(Boolean))) {
@@ -82,61 +85,67 @@ function parseEAJson(raw) {
   const root = data?.XMI?.Model || data?.['xmi:XMI']?.['uml:Model'] || data?.Model || data
   if (root) walk(root)
 
+  const project = normalizeProject({ packages, blocks, connectors, ports, idMap })
   return {
-    stats:   { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length },
-    project: normalizeProject({ packages, blocks, connectors, ports, idMap }),
+    stats: {
+      packages:   project.packages.length,
+      blocks:     project.blocks.length,
+      connectors: project.connectors.length,
+      ports:      project.ports.length,
+    },
+    project,
   }
 }
 
 async function fetchProjectFromBackend() {
   try {
-    const [pr, br, cr] = await Promise.all([
+    const [pr, br, cr, por] = await Promise.all([
       fetch('/api/packages'),
       fetch('/api/blocks'),
       fetch('/api/connectors').catch(() => ({ ok: false })),
+      fetch('/api/ports').catch(()      => ({ ok: false })),
     ])
     if (!pr.ok || !br.ok) return null
-    const packages    = await pr.json()
-    const blocks      = await br.json()
-    const connRaw     = cr.ok ? await cr.json().catch(() => []) : []
 
-    const idMap = {}, ports = []
+    const packagesRaw = await pr.json()
+    const blocksRaw   = await br.json()
+    const connsRaw    = cr.ok  ? await cr.json().catch(() => []) : []
+    const portsRaw    = por.ok ? await por.json().catch(() => []) : []
 
-    for (const p of packages) {
-      const pid = p.id || p.xmi_id
-      const par = p.parentId || p.parent_id || null
-      if (pid) idMap[pid] = { type: 'uml:Package', name: p.name || '', id: pid, parentId: par }
-      // normalizar campo
-      p.id = pid; p.parentId = par
-    }
-    for (const b of blocks) {
+    // Extraer puertos anidados en bloques si /api/ports no existe
+    const portsFromBlocks = []
+    for (const b of blocksRaw) {
       const bid = b.id || b.xmi_id
-      const par = b.parentId || b.parent_id || null
-      if (bid) idMap[bid] = { type: 'uml:Class', name: b.name || '', id: bid, parentId: par }
-      b.id = bid; b.parentId = par
-      // Puertos anidados que devuelva el backend
-      const bports = b.ports || b.ownedAttribute || []
-      for (const p of bports) {
+      for (const p of (b.ports || [])) {
         const ppid = p.id || p.xmi_id
-        if (!ppid) continue
-        const port = { id: ppid, name: p.name || '', parentId: bid }
-        ports.push(port)
-        idMap[ppid] = { type: 'uml:Port', name: p.name || '', id: ppid, parentId: bid }
+        if (ppid) portsFromBlocks.push({ id: ppid, name: p.name || '', owner_id: bid })
       }
     }
+    const ports = portsRaw.length > 0
+      ? portsRaw.map(p => ({ ...p, id: p.id || p.xmi_id }))
+      : portsFromBlocks
 
-    // Normalizar conectores del backend
-    const connectors = (connRaw || []).map(c => ({
+    // Normalizar conectores (backend usa source_id/target_id)
+    const connectors = (connsRaw || []).map(c => ({
       id:       c.id || c.xmi_id || '',
-      name:     c.name || '',
+      name:     c.name || c.label || '',
       parentId: c.parentId || c.parent_id || null,
-      source:   c.source || c.supplier || (Array.isArray(c.end) ? c.end[0]?.role || '' : ''),
-      target:   c.target || c.client   || (Array.isArray(c.end) ? c.end[1]?.role || '' : ''),
-      kind:     c.kind || c.type || 'uml:Connector',
+      source:   c.source    || c.source_id || c.supplier || '',
+      target:   c.target    || c.target_id || c.client   || '',
+      kind:     c.kind      || c.connector_type || c.type || 'uml:Connector',
     }))
 
-    return normalizeProject({ packages, blocks, connectors, ports, idMap })
-  } catch { return null }
+    return normalizeProject({
+      packages:   packagesRaw.map(p => ({ ...p, id: p.id || p.xmi_id })),
+      blocks:     blocksRaw.map(b   => ({ ...b, id: b.id || b.xmi_id })),
+      connectors,
+      ports,
+      idMap: {},
+    })
+  } catch (e) {
+    console.warn('[Ingest] fetchProjectFromBackend error:', e)
+    return null
+  }
 }
 
 function stripExt(f) { return f.replace(/\.[^.]+$/, '') }
