@@ -13,6 +13,22 @@ if AI_PROVIDER == "groq":
 else:
     MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
+# Modelos que NO aceptan el parámetro temperature (sólo admiten el valor por defecto).
+# Incluye la familia GPT-5.x y los modelos de razonamiento o-series.
+_NO_TEMPERATURE_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _supports_temperature(model: str) -> bool:
+    return not model.lower().startswith(_NO_TEMPERATURE_PREFIXES)
+
+
+def _chat_kwargs(temperature: float) -> dict:
+    """Devuelve kwargs extra para chat.completions.create según el modelo activo."""
+    if _supports_temperature(MODEL):
+        return {"temperature": temperature}
+    return {}
+
+
 SYSTEM_PROMPT = """Eres un experto en arquitectura de sistemas embebidos y SysML.
 Analiza la información estructural de un proyecto Enterprise Architect y responde en español.
 
@@ -215,7 +231,7 @@ class Summarizer:
                     )},
                     {"role": "user", "content": f"Block context:\n{context}\n\nList all port names:"},
                 ],
-                temperature=0.0,
+                **_chat_kwargs(0.0),
             )
             raw = response.choices[0].message.content
             llm_ports = [ln.strip().lstrip("-•* ") for ln in raw.splitlines() if ln.strip()]
@@ -246,7 +262,7 @@ class Summarizer:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.3,
+            **_chat_kwargs(0.3),
         )
         return {
             "block_id":    block.id,
@@ -314,6 +330,6 @@ class Summarizer:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.4,
+            **_chat_kwargs(0.4),
         )
         return response.choices[0].message.content
