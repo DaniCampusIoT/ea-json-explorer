@@ -4,6 +4,7 @@ import AuthGuard from './auth/AuthGuard'
 import { getUser, logout, isAuthenticated } from './auth/googleAuth'
 import RouteTransition from './components/RouteTransition'
 import ThemeToggle from './components/ThemeToggle'
+import GlobalSearch from './components/GlobalSearch'
 import Ingest from './views/Ingest'
 import Explorer from './views/Explorer'
 import Summary from './views/Summary'
@@ -34,6 +35,9 @@ export default function App() {
             </svg>
             <h1>Arcana</h1>
 
+            {/* Búsqueda global */}
+            <GlobalSearch />
+
             {projectStats && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
                 {projectStats.projectName && (
@@ -41,15 +45,15 @@ export default function App() {
                     fontWeight: 600, color: 'var(--color-primary)',
                     background: 'var(--color-primary-highlight)',
                     padding: '0.2rem 0.6rem', borderRadius: '999px',
-                    fontSize: '0.78rem', maxWidth: '240px',
+                    fontSize: '0.78rem', maxWidth: '200px',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }} title={projectStats.projectName}>
                     📁 {projectStats.projectName}
                   </span>
                 )}
-                <span>📦 {projectStats.packages} paquetes</span>
-                <span>🧱 {projectStats.blocks} bloques</span>
-                <span>🔌 {projectStats.connectors} conectores</span>
+                <span>📦 {projectStats.packages}</span>
+                <span>🧱 {projectStats.blocks}</span>
+                <span>🔌 {projectStats.connectors}</span>
               </div>
             )}
 
@@ -77,7 +81,7 @@ export default function App() {
           {/* Sidebar */}
           <nav className="app-sidebar">
             <div style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: '0.75rem', paddingLeft: '0.5rem' }}>Navegación</div>
-            <NavLink to="/"        className="nav-link">⬆️ Cargar proyecto</NavLink>
+            <NavLink to="/"         className="nav-link">⬆️ Cargar proyecto</NavLink>
             <NavLink to="/explorer" className="nav-link">🗂 Explorador</NavLink>
             <NavLink to="/summary"  className="nav-link">📋 Resúmenes</NavLink>
             <NavLink to="/ai"       className="nav-link">🤖 Panel IA</NavLink>
@@ -87,10 +91,10 @@ export default function App() {
           <main className="app-main">
             <RouteTransition>
               <Routes>
-                <Route path="/"            element={<Ingest onLoaded={setProjectStats} />} />
-                <Route path="/explorer"    element={<Explorer />} />
+                <Route path="/"                  element={<Ingest onLoaded={setProjectStats} />} />
+                <Route path="/explorer"          element={<Explorer />} />
                 <Route path="/summary/:blockId?" element={<Summary />} />
-                <Route path="/ai"          element={<AIPanel />} />
+                <Route path="/ai"                element={<AIPanel />} />
               </Routes>
             </RouteTransition>
           </main>

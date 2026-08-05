@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useProjectHistory } from '../utils/useProjectHistory'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
-// ─── Client-side parser (JSON only, para preview rápido) ───
 function parseEAJson(raw) {
   let data
   try { data = JSON.parse(raw) } catch (e) {
@@ -38,20 +38,28 @@ function parseEAJson(raw) {
   return { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length }
 }
 
-// Elimina la extensión del nombre de archivo
-function stripExt(filename) {
-  return filename.replace(/\.[^.]+$/, '')
+function stripExt(filename) { return filename.replace(/\.[^.]+$/, '') }
+
+function timeAgo(isoDate) {
+  const diff = Date.now() - new Date(isoDate).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)  return 'ahora mismo'
+  if (m < 60) return `hace ${m} min`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `hace ${h}h`
+  const d = Math.floor(h / 24)
+  return `hace ${d}d`
 }
 
-// ─── Component ───
 export default function Ingest({ onLoaded }) {
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState(null)
-  const [result, setResult]     = useState(null)
-  const [dragging, setDragging] = useState(false)
-  const [backendOk, setBackendOk] = useState(null)
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState(null)
+  const [result,     setResult]     = useState(null)
+  const [dragging,   setDragging]   = useState(false)
+  const [backendOk,  setBackendOk]  = useState(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
+  const { history, saveProject, loadProject, removeProject } = useProjectHistory()
 
   async function processFile(file) {
     if (!file) return
@@ -60,27 +68,18 @@ export default function Ingest({ onLoaded }) {
       setError('Formato no válido. Usa .json, .txt, .xml o .xmi exportado de EA.')
       return
     }
-    setLoading(true)
-    setError(null)
-    setResult(null)
-
+    setLoading(true); setError(null); setResult(null)
     const isXml = ext === 'xml' || ext === 'xmi'
     const projectName = stripExt(file.name)
-
-    // Para XML saltamos el parser cliente y vamos directo al backend
     let stats = { packages: 0, blocks: 0, connectors: 0, ports: 0 }
+
     if (!isXml) {
       const text = await file.text()
-      try {
-        stats = parseEAJson(text)
-      } catch (err) {
-        setError(err.message)
-        setLoading(false)
-        return
+      try { stats = parseEAJson(text) } catch (err) {
+        setError(err.message); setLoading(false); return
       }
     }
 
-    // POST al backend (obligatorio para XML, opcional para JSON)
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -92,26 +91,27 @@ export default function Ingest({ onLoaded }) {
         onLoaded({ ...backendStats, projectName })
       } else {
         const err = await res.json().catch(() => ({}))
-        if (isXml) {
-          setError(err.detail || 'Error al procesar el XML en el backend.')
-          setLoading(false)
-          return
-        }
+        if (isXml) { setError(err.detail || 'Error al procesar el XML.'); setLoading(false); return }
         setBackendOk(false)
         onLoaded({ ...stats, projectName })
       }
     } catch {
-      if (isXml) {
-        setError('No se pudo conectar con el backend. Asegúrate de que está arrancado.')
-        setLoading(false)
-        return
-      }
+      if (isXml) { setError('No se pudo conectar con el backend.'); setLoading(false); return }
       setBackendOk(false)
       onLoaded({ ...stats, projectName })
     }
 
+    // Guardar en historial
+    saveProject(projectName, stats)
     setResult(stats)
     setLoading(false)
+  }
+
+  function handleRecentLoad(entry) {
+    const e = loadProject(entry)
+    onLoaded({ ...e.stats, projectName: e.name })
+    setResult(e.stats)
+    setBackendOk(null)
   }
 
   function handleInputChange(e) { processFile(e.target.files[0]); e.target.value = '' }
@@ -129,6 +129,7 @@ export default function Ingest({ onLoaded }) {
         Se aceptan <strong>.json</strong>, <strong>.txt</strong>, <strong>.xml</strong> y <strong>.xmi</strong>.
       </p>
 
+      {/* Drop zone */}
       <div
         onClick={() => !loading && inputRef.current?.click()}
         onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}
@@ -157,25 +158,17 @@ export default function Ingest({ onLoaded }) {
         </div>
       )}
 
+      {/* Resultado carga */}
       {result && (
         <div style={{ marginTop: '1.5rem' }} className="card">
           <div className="card-title">✅ Proyecto cargado</div>
-
           {backendOk === false && (
             <div style={{ margin: '0.5rem 0 0.75rem', padding: '0.6rem 0.75rem', background: '#fffbea', border: '1px solid #f0c040', borderRadius: '0.4rem', fontSize: '0.8rem', color: '#7a5800' }}>
               ⚠️ Backend no disponible. Las funciones de IA no estarán activas.
             </div>
           )}
-          {backendOk === true && (
-            <div style={{ margin: '0.5rem 0 0.75rem', padding: '0.6rem 0.75rem', background: '#f0faf0', border: '1px solid var(--color-success)', borderRadius: '0.4rem', fontSize: '0.8rem', color: 'var(--color-success)' }}>
-              ✅ Backend conectado. IA disponible.
-            </div>
-          )}
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
-            {Object.entries(result)
-              .filter(([k]) => k !== 'projectName')
-              .map(([k, v]) => (
+            {Object.entries(result).filter(([k]) => k !== 'projectName').map(([k, v]) => (
               <div key={k} style={{ padding: '0.75rem', background: 'var(--color-bg)', borderRadius: '0.375rem', textAlign: 'center' }}>
                 <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-primary)' }}>{v}</div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.15rem' }}>{statLabels[k] || k}</div>
@@ -185,6 +178,33 @@ export default function Ingest({ onLoaded }) {
           <button className="btn btn-primary" style={{ marginTop: '1rem', width: '100%' }} onClick={() => navigate('/explorer')}>
             Explorar proyecto →
           </button>
+        </div>
+      )}
+
+      {/* Historial de proyectos recientes */}
+      {history.length > 0 && (
+        <div style={{ marginTop: '2rem' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
+            Proyectos recientes
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {history.map((entry, i) => (
+              <div key={i} className="recent-project-row">
+                <button className="recent-project-main" onClick={() => handleRecentLoad(entry)}>
+                  <span style={{ fontSize: '1.1rem' }}>📁</span>
+                  <span className="recent-project-name">{entry.name}</span>
+                  <span className="recent-project-meta">
+                    {entry.stats?.blocks ?? '?'} bloques · {timeAgo(entry.date)}
+                  </span>
+                </button>
+                <button
+                  className="recent-project-remove"
+                  onClick={() => removeProject(entry.name)}
+                  title="Eliminar del historial"
+                >✕</button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
