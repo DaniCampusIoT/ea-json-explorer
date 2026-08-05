@@ -14,6 +14,8 @@ const PKG_COLORS = [
   '#10b981','#f97316','#6366f1','#14b8a6','#e11d48',
 ]
 
+function pid(b) { return b.parentId || b.parent_id || null }
+
 export default function BlockDiagram() {
   const { project } = useAI()
   const navigate    = useNavigate()
@@ -23,32 +25,31 @@ export default function BlockDiagram() {
 
   const { packages = [], blocks = [], connectors = [], ports = [], idMap = {} } = project || {}
 
-  // Paquetes que realmente tienen bloques con nombre
-  const namedPackages = useMemo(() =>
-    packages
-      .filter(p => p.name)
-      .filter(p => blocks.some(b => (b.parentId === p.id || b.parent_id === p.id) && b.name))
-      .sort((a, b) => {
-        // Ordenar por número de bloques desc
-        const ca = blocks.filter(b => b.parentId === a.id && b.name).length
-        const cb = blocks.filter(b => b.parentId === b.id && b.name).length
-        return cb - ca
-      })
-  , [packages, blocks])
+  // Paquetes que tienen al menos un bloque con nombre
+  const namedPackages = useMemo(() => {
+    const pkgSet = new Set(packages.map(p => p.id))
+    // Contar bloques por paquete (tolerar parentId o parent_id)
+    const count = {}
+    for (const b of blocks) {
+      if (!b.name) continue
+      const par = pid(b)
+      if (par) count[par] = (count[par] || 0) + 1
+    }
+    return packages
+      .filter(p => p.name && count[p.id] > 0)
+      .sort((a, b) => (count[b.id] || 0) - (count[a.id] || 0))
+  }, [packages, blocks])
 
   const [selectedPkg, setSelectedPkg] = useState('')
-  // Inicializar con el primer paquete con bloques cuando cargue el proyecto
   const resolvedPkg = selectedPkg || namedPackages[0]?.id || ''
 
   const [pan,  setPan]  = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
 
   const pkgBlocks = useMemo(() =>
-    blocks
-      .filter(b => (b.parentId === resolvedPkg || b.parent_id === resolvedPkg) && b.name)
+    blocks.filter(b => pid(b) === resolvedPkg && b.name)
   , [blocks, resolvedPkg])
 
-  // Posiciones en grid
   const positions = useMemo(() => {
     const map = {}
     pkgBlocks.forEach((b, i) => {
@@ -60,33 +61,28 @@ export default function BlockDiagram() {
     return map
   }, [pkgBlocks])
 
-  // Resolver puerto -> bloque padre
-  function resolveBlock(portOrBlockId) {
-    const entry = idMap[portOrBlockId]
+  // Resolver ID (puerto o bloque) -> ID de bloque
+  function resolveBlockId(id) {
+    const entry = idMap[id]
     if (!entry) return null
     if (entry.type === 'uml:Port') {
-      // subir al bloque contenedor
       const parent = idMap[entry.parentId]
-      return parent?.type === 'uml:Class' || parent?.type === 'uml:Component'
-        ? parent.id : null
+      return (parent?.type === 'uml:Class' || parent?.type === 'uml:Component') ? parent.id : null
     }
-    return entry.type === 'uml:Class' || entry.type === 'uml:Component'
-      ? entry.id : null
+    return (entry.type === 'uml:Class' || entry.type === 'uml:Component') ? entry.id : null
   }
 
-  // Conectores entre bloques de este paquete
   const visibleConnectors = useMemo(() => {
     const pkgIds = new Set(pkgBlocks.map(b => b.id))
     const seen   = new Set()
     const result = []
     for (const c of connectors) {
-      const srcBlk = resolveBlock(c.source)
-      const tgtBlk = resolveBlock(c.target)
-      if (!srcBlk || !tgtBlk) continue
+      const srcBlk = resolveBlockId(c.source)
+      const tgtBlk = resolveBlockId(c.target)
+      if (!srcBlk || !tgtBlk || srcBlk === tgtBlk) continue
       if (!pkgIds.has(srcBlk) || !pkgIds.has(tgtBlk)) continue
-      if (srcBlk === tgtBlk) continue
       const key = [srcBlk, tgtBlk].sort().join('|')
-      if (seen.has(key)) continue   // deduplicar paralelos
+      if (seen.has(key)) continue
       seen.add(key)
       result.push({ ...c, srcBlk, tgtBlk })
     }
@@ -135,28 +131,29 @@ export default function BlockDiagram() {
       <p>Carga un proyecto primero.</p>
     </div>
   )
-
   if (namedPackages.length === 0) return (
     <div className="empty-state">
       <span style={{fontSize:'3rem'}}>📦</span>
-      <p>No se encontraron paquetes con bloques en el proyecto.</p>
+      <p>No se encontraron paquetes con bloques en el proyecto cargado.</p>
+      <p style={{fontSize:'0.8rem',color:'var(--color-text-muted)'}}>
+        Debug: {blocks.length} bloques, {packages.length} paquetes,
+        parentIds: {[...new Set(blocks.slice(0,5).map(b=>pid(b)))].join(', ')}
+      </p>
     </div>
   )
 
   return (
     <div style={{display:'flex',flexDirection:'column',gap:'1rem',height:'100%'}}>
-      {/* Controles */}
       <div style={{display:'flex',alignItems:'center',gap:'0.75rem',flexWrap:'wrap'}}>
         <h2 style={{fontSize:'1.25rem',fontWeight:700,flex:1}}>🗢️ Diagrama de bloques</h2>
-        <select
-          value={resolvedPkg}
+        <select value={resolvedPkg}
           onChange={e => { setSelectedPkg(e.target.value); setPan({x:0,y:0}); setZoom(1) }}
           style={{padding:'0.5rem 0.75rem',border:'1px solid var(--color-border)',
             borderRadius:'0.5rem',fontSize:'0.85rem',
             background:'var(--color-surface)',color:'var(--color-text)',maxWidth:'280px'}}>
           {namedPackages.map(p => (
             <option key={p.id} value={p.id}>
-              {p.name} ({blocks.filter(b => b.parentId === p.id && b.name).length})
+              {p.name} ({blocks.filter(b => pid(b) === p.id && b.name).length})
             </option>
           ))}
         </select>
@@ -167,7 +164,6 @@ export default function BlockDiagram() {
         </span>
       </div>
 
-      {/* Canvas */}
       <div style={{
         border:'1px solid var(--color-border)',borderRadius:'0.75rem',
         overflow:'hidden',background:'var(--color-surface)',
@@ -177,7 +173,6 @@ export default function BlockDiagram() {
         onMouseDown={onMouseDown} onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}    onMouseLeave={onMouseUp}
         onWheel={onWheel}>
-
         <svg ref={svgRef} width="100%" height="100%"
           viewBox={`0 0 ${svgW} ${svgH}`} style={{display:'block'}}>
           <defs>
@@ -186,9 +181,7 @@ export default function BlockDiagram() {
               <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8" />
             </marker>
           </defs>
-
           <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
-            {/* Conectores */}
             {visibleConnectors.map((c, i) => {
               const src = portPoint(c.srcBlk, true)
               const tgt = portPoint(c.tgtBlk, false)
@@ -207,13 +200,11 @@ export default function BlockDiagram() {
                 </g>
               )
             })}
-
-            {/* Bloques */}
             {pkgBlocks.map(b => {
               const pos    = positions[b.id]
               if (!pos) return null
-              const color  = pkgColorMap[b.parentId] || '#01a0a8'
-              const bports = ports.filter(p => p.parentId === b.id)
+              const color  = pkgColorMap[pid(b)] || '#01a0a8'
+              const bports = ports.filter(p => (p.parentId || p.parent_id) === b.id)
               const label  = b.name.length > 19 ? b.name.slice(0,18) + '…' : b.name
               return (
                 <g key={b.id} style={{cursor:'pointer'}}
@@ -244,7 +235,6 @@ export default function BlockDiagram() {
           </g>
         </svg>
       </div>
-
       <p style={{fontSize:'0.75rem',color:'var(--color-text-muted)',margin:0}}>
         💡 Arrastra para mover · Rueda para zoom · Clic en un bloque para ver su ficha
       </p>

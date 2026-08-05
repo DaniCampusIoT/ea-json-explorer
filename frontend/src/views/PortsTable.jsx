@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAI } from '../context/AIContext'
 
+function pid(item) { return item?.parentId || item?.parent_id || null }
+
 export default function PortsTable() {
   const { project } = useAI()
   const navigate    = useNavigate()
@@ -13,15 +15,13 @@ export default function PortsTable() {
   const ports      = project?.ports      || []
   const connectors = project?.connectors || []
   const blocks     = project?.blocks     || []
-  const packages   = project?.packages   || []
   const idMap      = project?.idMap      || {}
 
-  // Resolver puerto o bloque -> bloque padre (por si source/target es un puerto)
   function resolveBlock(id) {
     const entry = idMap[id]
     if (!entry) return null
     if (entry.type === 'uml:Port') {
-      const parent = idMap[entry.parentId]
+      const parent = idMap[entry.parentId || entry.parent_id]
       return (parent?.type === 'uml:Class' || parent?.type === 'uml:Component') ? parent : null
     }
     return (entry.type === 'uml:Class' || entry.type === 'uml:Component') ? entry : null
@@ -31,36 +31,31 @@ export default function PortsTable() {
     return ports
       .filter(p => p.name)
       .map(p => {
-        const parentBlock = blocks.find(b => b.id === p.parentId)
-        const parentPkg   = idMap[parentBlock?.parentId]?.name || ''
-
-        // Conectores que usan este puerto como source o target (_role)
+        const parentBlock = blocks.find(b => b.id === pid(p))
+        const parentPkg   = idMap[pid(parentBlock)]?.name || ''
         const linkedConns = connectors.filter(c =>
           c.source === p.id || c.target === p.id
         )
         const peers = linkedConns.map(c => {
-          const peerId     = c.source === p.id ? c.target : c.source
-          const peerEntry  = idMap[peerId]
-          const peerPort   = peerEntry?.type === 'uml:Port' ? peerEntry : null
-          const peerBlock  = peerPort
-            ? blocks.find(b => b.id === peerPort.parentId)
+          const peerId    = c.source === p.id ? c.target : c.source
+          const peerEntry = idMap[peerId]
+          const peerPort  = peerEntry?.type === 'uml:Port' ? peerEntry : null
+          const peerBlock = peerPort
+            ? blocks.find(b => b.id === (peerPort.parentId || peerPort.parent_id))
             : resolveBlock(peerId)
           return {
-            portName:  peerPort?.name || '',
+            portName:  peerPort?.name  || '',
             blockName: peerBlock?.name || idMap[peerId]?.name || '',
-            blockId:   peerBlock?.id  || '',
+            blockId:   peerBlock?.id   || '',
             connKind:  c.kind?.replace('uml:', '') || '',
             connName:  c.name || '',
           }
         })
-
         return {
-          portId:    p.id,
-          portName:  p.name,
+          portId: p.id, portName: p.name,
           blockName: parentBlock?.name || '',
           blockId:   parentBlock?.id   || '',
-          pkg:       parentPkg,
-          peers,
+          pkg: parentPkg, peers,
           connected: peers.length > 0,
         }
       })
@@ -94,7 +89,6 @@ export default function PortsTable() {
   const uniquePkgs = [...new Set(rows.map(r => r.pkg).filter(Boolean))].sort()
   const connected  = rows.filter(r => r.connected).length
 
-  // Guards
   if (!project || (!ports.length && !blocks.length)) return (
     <div className="empty-state">
       <span style={{fontSize:'3rem'}}>🔌</span>
@@ -120,7 +114,6 @@ export default function PortsTable() {
         Relación completa de puertos, sus bloques y las conexiones entre ellos.
       </p>
 
-      {/* Filtros */}
       <div style={{display:'flex',gap:'0.75rem',marginBottom:'1rem',flexWrap:'wrap'}}>
         <input value={filter} onChange={e => setFilter(e.target.value)}
           placeholder="Filtrar por puerto, bloque o par…"
@@ -140,7 +133,6 @@ export default function PortsTable() {
         )}
       </div>
 
-      {/* Stats */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'1.25rem'}}>
         {[
           { label:'Puertos totales', val:rows.length,           icon:'🔌' },
@@ -185,7 +177,7 @@ export default function PortsTable() {
             </thead>
             <tbody>
               {sorted.map((row, ri) => {
-                const bg = ri%2===0 ? 'transparent' : 'var(--color-surface)'
+                const bg      = ri%2===0 ? 'transparent' : 'var(--color-surface)'
                 const rowspan = Math.max(row.peers.length, 1)
                 return row.peers.length === 0
                   ? (
@@ -205,8 +197,8 @@ export default function PortsTable() {
                   )
                   : row.peers.map((peer, pi) => (
                     <tr key={`${row.portId}-${pi}`} style={{
-                      borderBottom: pi===row.peers.length-1?'1px solid var(--color-border)':'none',
-                      background:bg}}>
+                      borderBottom: pi===row.peers.length-1 ? '1px solid var(--color-border)' : 'none',
+                      background: bg}}>
                       {pi === 0 && (
                         <>
                           <td rowSpan={rowspan} style={{padding:'0.45rem 0.75rem',

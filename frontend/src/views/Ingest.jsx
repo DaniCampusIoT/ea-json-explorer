@@ -5,6 +5,44 @@ import { useAI } from '../context/AIContext'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
+/** Normaliza un objeto de proyecto: garantiza que todos los items
+ *  tengan siempre `parentId` (nunca solo `parent_id`) y que idMap
+ *  contenga también los puertos. */
+function normalizeProject(proj) {
+  if (!proj) return proj
+  function norm(arr) {
+    return (arr || []).map(item => ({
+      ...item,
+      parentId: item.parentId || item.parent_id || null,
+    }))
+  }
+  const packages   = norm(proj.packages)
+  const blocks     = norm(proj.blocks)
+  const connectors = norm(proj.connectors)
+  const ports      = norm(proj.ports)
+
+  // Reconstruir idMap completo con datos normalizados
+  const idMap = { ...(proj.idMap || {}) }
+  for (const p of packages)
+    if (p.id) idMap[p.id] = { ...idMap[p.id], type: idMap[p.id]?.type || 'uml:Package', name: p.name, id: p.id, parentId: p.parentId }
+  for (const b of blocks)
+    if (b.id) idMap[b.id] = { ...idMap[b.id], type: idMap[b.id]?.type || 'uml:Class', name: b.name, id: b.id, parentId: b.parentId }
+  for (const p of ports)
+    if (p.id) idMap[p.id] = { ...idMap[p.id], type: 'uml:Port', name: p.name, id: p.id, parentId: p.parentId }
+
+  // Promover bloques-contenedor a packages (si no están ya)
+  const pkgIds   = new Set(packages.map(p => p.id))
+  const blockIds = new Set(blocks.map(b => b.id))
+  for (const pid of new Set(blocks.map(b => b.parentId).filter(Boolean))) {
+    if (!pkgIds.has(pid) && blockIds.has(pid)) {
+      const e = idMap[pid]
+      if (e) { packages.push({ id: e.id, name: e.name, parentId: e.parentId }); pkgIds.add(pid) }
+    }
+  }
+
+  return { packages, blocks, connectors, ports, idMap }
+}
+
 function parseEAJson(raw) {
   let data
   try { data = JSON.parse(raw) } catch (e) {
@@ -44,39 +82,60 @@ function parseEAJson(raw) {
   const root = data?.XMI?.Model || data?.['xmi:XMI']?.['uml:Model'] || data?.Model || data
   if (root) walk(root)
 
-  // Promover bloques-contenedor a packages
-  const pkgIds   = new Set(packages.map(p => p.id))
-  const blockIds = new Set(blocks.map(b => b.id))
-  for (const pid of new Set(blocks.map(b => b.parentId).filter(Boolean))) {
-    if (!pkgIds.has(pid) && blockIds.has(pid)) {
-      const e = idMap[pid]
-      if (e) packages.push({ id: e.id, name: e.name, parentId: e.parentId })
-    }
-  }
-
   return {
     stats:   { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length },
-    project: { packages, blocks, connectors, ports, idMap },
+    project: normalizeProject({ packages, blocks, connectors, ports, idMap }),
   }
 }
 
 async function fetchProjectFromBackend() {
   try {
-    const [pr, br] = await Promise.all([fetch('/api/packages'), fetch('/api/blocks')])
+    const [pr, br, cr] = await Promise.all([
+      fetch('/api/packages'),
+      fetch('/api/blocks'),
+      fetch('/api/connectors').catch(() => ({ ok: false })),
+    ])
     if (!pr.ok || !br.ok) return null
-    const packages = await pr.json()
-    const blocks   = await br.json()
+    const packages    = await pr.json()
+    const blocks      = await br.json()
+    const connRaw     = cr.ok ? await cr.json().catch(() => []) : []
+
     const idMap = {}, ports = []
-    for (const p of packages)
-      if (p.id) idMap[p.id] = { type: 'uml:Package', name: p.name, id: p.id, parentId: p.parentId || p.parent_id || null }
+
+    for (const p of packages) {
+      const pid = p.id || p.xmi_id
+      const par = p.parentId || p.parent_id || null
+      if (pid) idMap[pid] = { type: 'uml:Package', name: p.name || '', id: pid, parentId: par }
+      // normalizar campo
+      p.id = pid; p.parentId = par
+    }
     for (const b of blocks) {
-      if (b.id) idMap[b.id] = { type: 'uml:Class', name: b.name, id: b.id, parentId: b.parentId || b.parent_id || null }
-      if (b.ports) for (const p of b.ports) {
-        ports.push({ id: p.id, name: p.name, parentId: b.id })
-        if (p.id) idMap[p.id] = { type: 'uml:Port', name: p.name, id: p.id, parentId: b.id }
+      const bid = b.id || b.xmi_id
+      const par = b.parentId || b.parent_id || null
+      if (bid) idMap[bid] = { type: 'uml:Class', name: b.name || '', id: bid, parentId: par }
+      b.id = bid; b.parentId = par
+      // Puertos anidados que devuelva el backend
+      const bports = b.ports || b.ownedAttribute || []
+      for (const p of bports) {
+        const ppid = p.id || p.xmi_id
+        if (!ppid) continue
+        const port = { id: ppid, name: p.name || '', parentId: bid }
+        ports.push(port)
+        idMap[ppid] = { type: 'uml:Port', name: p.name || '', id: ppid, parentId: bid }
       }
     }
-    return { packages, blocks, connectors: [], ports, idMap }
+
+    // Normalizar conectores del backend
+    const connectors = (connRaw || []).map(c => ({
+      id:       c.id || c.xmi_id || '',
+      name:     c.name || '',
+      parentId: c.parentId || c.parent_id || null,
+      source:   c.source || c.supplier || (Array.isArray(c.end) ? c.end[0]?.role || '' : ''),
+      target:   c.target || c.client   || (Array.isArray(c.end) ? c.end[1]?.role || '' : ''),
+      kind:     c.kind || c.type || 'uml:Connector',
+    }))
+
+    return normalizeProject({ packages, blocks, connectors, ports, idMap })
   } catch { return null }
 }
 
@@ -98,7 +157,7 @@ export default function Ingest({ onLoaded }) {
   const inputRef = useRef(null)
   const navigate = useNavigate()
   const { history, saveProject, removeProject, clearHistory } = useProjectHistory()
-  const { setProject } = useAI()   // ← fuente de verdad React
+  const { setProject } = useAI()
 
   async function processFile(file) {
     if (!file) return
@@ -111,14 +170,12 @@ export default function Ingest({ onLoaded }) {
     let project = null
     let backendOk = false
 
-    // Parseo cliente (JSON)
     if (!isXml) {
       const text = await file.text()
       try { const p = parseEAJson(text); stats = p.stats; project = p.project }
       catch (err) { setError(err.message); setLoading(false); return }
     }
 
-    // POST backend
     try {
       const fd = new FormData(); fd.append('file', file)
       const res = await fetch('/api/ingest', { method: 'POST', body: fd })
@@ -138,8 +195,8 @@ export default function Ingest({ onLoaded }) {
     }
 
     if (project) {
-      setProject(project)                    // ← actualiza contexto React
-      saveProject(projName, stats, project)  // ← guarda snapshot correcto
+      setProject(project)
+      saveProject(projName, stats, project)
     }
     setBeOk(backendOk)
     setResult(stats)
@@ -147,15 +204,16 @@ export default function Ingest({ onLoaded }) {
   }
 
   function handleRecentLoad(entry) {
-    setProject(entry.project)              // ← actualiza contexto React directamente
+    const proj = normalizeProject(entry.project)
+    setProject(proj)
     onLoaded({ ...entry.stats, projectName: entry.name })
     setResult(entry.stats)
     setBeOk(null)
   }
 
-  const onInput    = e => { processFile(e.target.files[0]); e.target.value = '' }
-  const onDrop     = e => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files[0]) }
-  const onDragOver = e => { e.preventDefault(); setDragging(true) }
+  const onInput     = e => { processFile(e.target.files[0]); e.target.value = '' }
+  const onDrop      = e => { e.preventDefault(); setDragging(false); processFile(e.dataTransfer.files[0]) }
+  const onDragOver  = e => { e.preventDefault(); setDragging(true) }
   const onDragLeave = () => setDragging(false)
 
   const statLabels = { packages:'paquetes', blocks:'bloques', connectors:'conectores', ports:'puertos' }
