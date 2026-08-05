@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import MarkdownView from '../components/MarkdownView'
 
 export default function AIPanel() {
   const [question, setQuestion] = useState('')
@@ -77,11 +78,11 @@ export default function AIPanel() {
       {error && (
         <div style={{ marginBottom: '1rem', padding: '0.75rem 1rem', background: '#fffbea', border: '1px solid #f0c040', borderRadius: '0.5rem', fontSize: '0.85rem', color: '#7a5800' }}>
           ⚠️ {error}
-          {error.includes('OPENAI_API_KEY') || error.includes('500') ? (
+          {(error.includes('OPENAI_API_KEY') || error.includes('500')) && (
             <div style={{ marginTop: '0.5rem', fontWeight: 600 }}>
               Configura la clave: en <code>backend/</code> crea un archivo <code>.env</code> con <code>OPENAI_API_KEY=sk-...</code> y reinicia el backend.
             </div>
-          ) : null}
+          )}
         </div>
       )}
 
@@ -89,7 +90,7 @@ export default function AIPanel() {
       {answer && (
         <div className="card" style={{ marginBottom: '1.5rem', background: 'var(--color-primary-highlight)' }}>
           <div className="card-title">🤖 Respuesta</div>
-          <pre style={{ background: 'transparent', padding: 0, fontSize: '0.875rem', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{answer}</pre>
+          <MarkdownView>{answer}</MarkdownView>
         </div>
       )}
 
@@ -100,9 +101,9 @@ export default function AIPanel() {
           {history.slice(1).map((item, i) => (
             <div key={i} className="card" style={{ marginBottom: '0.75rem', opacity: 0.65 }}>
               <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--color-primary)', marginBottom: '0.4rem' }}>❓ {item.question}</div>
-              <pre style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', whiteSpace: 'pre-wrap', background: 'transparent', padding: 0 }}>
-                {item.answer.slice(0, 300)}{item.answer.length > 300 ? '…' : ''}
-              </pre>
+              <MarkdownView className="md-body--compact">
+                {item.answer.slice(0, 400) + (item.answer.length > 400 ? '\n\n…' : '')}
+              </MarkdownView>
             </div>
           ))}
         </div>

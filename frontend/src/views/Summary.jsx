@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import MarkdownView from '../components/MarkdownView'
 
 export default function Summary() {
   const { blockId } = useParams()
@@ -107,7 +108,7 @@ export default function Summary() {
     <div style={{ maxWidth: '820px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1.5rem' }}>
-        <span style={{ fontSize: '2rem', flexShrink: 0 }}>🧻</span>
+        <span style={{ fontSize: '2rem', flexShrink: 0 }}>🧱</span>
         <div style={{ flex: 1 }}>
           <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>{block.name}</h2>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
@@ -195,33 +196,19 @@ export default function Summary() {
             </p>
           </details>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-            <a
-              href={imageData.image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-ghost"
-              style={{ fontSize: '0.78rem' }}
-            >
-              🔗 Abrir en nueva pestaña
-            </a>
-            <button
-              className="btn btn-ghost"
-              style={{ fontSize: '0.78rem' }}
-              onClick={() => navigator.clipboard.writeText(imageData.image_url)}
-            >
-              📋 Copiar URL
-            </button>
+            <a href={imageData.image_url} target="_blank" rel="noopener noreferrer"
+              className="btn btn-ghost" style={{ fontSize: '0.78rem' }}>🔗 Abrir en nueva pestaña</a>
+            <button className="btn btn-ghost" style={{ fontSize: '0.78rem' }}
+              onClick={() => navigator.clipboard.writeText(imageData.image_url)}>📋 Copiar URL</button>
           </div>
         </div>
       )}
 
-      {/* Summary */}
+      {/* AI Summary */}
       {summary && (
         <div className="card" style={{ marginBottom: '1.25rem', background: 'var(--color-primary-highlight)' }}>
           <div className="card-title">🤖 Resumen IA</div>
-          <pre style={{ background: 'transparent', padding: 0, fontSize: '0.85rem', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-            {summary.summary}
-          </pre>
+          <MarkdownView>{summary.summary}</MarkdownView>
         </div>
       )}
 
