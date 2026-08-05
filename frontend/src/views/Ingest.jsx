@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjectHistory } from '../utils/useProjectHistory'
+import { useAI } from '../context/AIContext'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
@@ -47,19 +48,19 @@ function timeAgo(isoDate) {
   if (m < 60) return `hace ${m} min`
   const h = Math.floor(m / 60)
   if (h < 24) return `hace ${h}h`
-  const d = Math.floor(h / 24)
-  return `hace ${d}d`
+  return `hace ${Math.floor(h / 24)}d`
 }
 
 export default function Ingest({ onLoaded }) {
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState(null)
-  const [result,     setResult]     = useState(null)
-  const [dragging,   setDragging]   = useState(false)
-  const [backendOk,  setBackendOk]  = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState(null)
+  const [result,    setResult]    = useState(null)
+  const [dragging,  setDragging]  = useState(false)
+  const [backendOk, setBackendOk] = useState(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
   const { history, saveProject, loadProject, removeProject } = useProjectHistory()
+  const { bumpProject } = useAI()
 
   async function processFile(file) {
     if (!file) return
@@ -86,30 +87,28 @@ export default function Ingest({ onLoaded }) {
       const res = await fetch('/api/ingest', { method: 'POST', body: fd })
       if (res.ok) {
         const backendStats = await res.json()
-        setBackendOk(true)
-        stats = backendStats
+        setBackendOk(true); stats = backendStats
         onLoaded({ ...backendStats, projectName })
       } else {
         const err = await res.json().catch(() => ({}))
         if (isXml) { setError(err.detail || 'Error al procesar el XML.'); setLoading(false); return }
-        setBackendOk(false)
-        onLoaded({ ...stats, projectName })
+        setBackendOk(false); onLoaded({ ...stats, projectName })
       }
     } catch {
       if (isXml) { setError('No se pudo conectar con el backend.'); setLoading(false); return }
-      setBackendOk(false)
-      onLoaded({ ...stats, projectName })
+      setBackendOk(false); onLoaded({ ...stats, projectName })
     }
 
-    // Guardar en historial
     saveProject(projectName, stats)
+    bumpProject()          // ← notifica a Explorer / Summary
     setResult(stats)
     setLoading(false)
   }
 
   function handleRecentLoad(entry) {
-    const e = loadProject(entry)
+    const e = loadProject(entry)  // restaura window.eaProject
     onLoaded({ ...e.stats, projectName: e.name })
+    bumpProject()                 // ← fuerza re-render de Explorer / Summary
     setResult(e.stats)
     setBackendOk(null)
   }
@@ -129,7 +128,6 @@ export default function Ingest({ onLoaded }) {
         Se aceptan <strong>.json</strong>, <strong>.txt</strong>, <strong>.xml</strong> y <strong>.xmi</strong>.
       </p>
 
-      {/* Drop zone */}
       <div
         onClick={() => !loading && inputRef.current?.click()}
         onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}
@@ -158,7 +156,6 @@ export default function Ingest({ onLoaded }) {
         </div>
       )}
 
-      {/* Resultado carga */}
       {result && (
         <div style={{ marginTop: '1.5rem' }} className="card">
           <div className="card-title">✅ Proyecto cargado</div>
@@ -181,7 +178,6 @@ export default function Ingest({ onLoaded }) {
         </div>
       )}
 
-      {/* Historial de proyectos recientes */}
       {history.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-text-muted)', marginBottom: '0.75rem' }}>
@@ -197,11 +193,7 @@ export default function Ingest({ onLoaded }) {
                     {entry.stats?.blocks ?? '?'} bloques · {timeAgo(entry.date)}
                   </span>
                 </button>
-                <button
-                  className="recent-project-remove"
-                  onClick={() => removeProject(entry.name)}
-                  title="Eliminar del historial"
-                >✕</button>
+                <button className="recent-project-remove" onClick={() => removeProject(entry.name)} title="Eliminar del historial">✕</button>
               </div>
             ))}
           </div>

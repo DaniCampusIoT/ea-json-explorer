@@ -1,22 +1,27 @@
-import React, { createContext, useContext, useState } from 'react'
+import React, { createContext, useContext, useState, useCallback } from 'react'
 
 /**
- * Contexto global para el Panel IA.
- * Mantiene el historial de conversación entre navegaciones.
+ * Contexto global compartido.
+ * - historial de conversación IA (persistente entre rutas)
+ * - projectVersion: incrementar fuerza re-render de Explorer/Summary
  */
 const AIContext = createContext(null)
 
 export function AIProvider({ children }) {
-  const [history, setHistory] = useState([])   // [{ question, answer }]
-  const [answer,  setAnswer]  = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState(null)
+  const [history,        setHistory]        = useState([])
+  const [answer,         setAnswer]         = useState(null)
+  const [loading,        setLoading]        = useState(false)
+  const [error,          setError]          = useState(null)
+  const [projectVersion, setProjectVersion] = useState(0)
+
+  /** Llama a esto siempre que se cambie window.eaProject (carga nueva o reciente). */
+  const bumpProject = useCallback(() => {
+    setProjectVersion(v => v + 1)
+  }, [])
 
   async function ask(question) {
     if (!question.trim()) return
-    setLoading(true)
-    setAnswer(null)
-    setError(null)
+    setLoading(true); setAnswer(null); setError(null)
     try {
       const res = await fetch('/api/ask', {
         method: 'POST',
@@ -39,13 +44,14 @@ export function AIProvider({ children }) {
   }
 
   function clearHistory() {
-    setHistory([])
-    setAnswer(null)
-    setError(null)
+    setHistory([]); setAnswer(null); setError(null)
   }
 
   return (
-    <AIContext.Provider value={{ history, answer, loading, error, ask, clearHistory }}>
+    <AIContext.Provider value={{
+      history, answer, loading, error, ask, clearHistory,
+      projectVersion, bumpProject,
+    }}>
       {children}
     </AIContext.Provider>
   )

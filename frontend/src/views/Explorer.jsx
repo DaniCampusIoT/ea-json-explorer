@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { SkeletonExplorer } from '../components/Skeleton'
+import { useAI } from '../context/AIContext'
 
 export default function Explorer() {
   const [packages, setPackages] = useState([])
@@ -9,8 +10,8 @@ export default function Explorer() {
   const [loading,  setLoading]  = useState(true)
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { projectVersion } = useAI()   // re-ejecuta el efecto al cambiar de proyecto
 
-  // Leer paquete activo desde la URL
   const selectedPkg = searchParams.get('pkg') || null
 
   function setSelected(pkgId) {
@@ -19,15 +20,18 @@ export default function Explorer() {
   }
 
   useEffect(() => {
+    setLoading(true)
+    setSource('')
     fetch('/api/packages')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => { setPackages(Array.isArray(data) ? data : []); setSource('backend') })
       .catch(() => {
         const proj = window.eaProject
         if (proj) { setPackages(proj.packages || []); setBlocks(proj.blocks || []); setSource('local') }
+        else      { setPackages([]); setBlocks([]) }
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [projectVersion])   // ← se re-ejecuta cada vez que bumpProject() se llama
 
   useEffect(() => {
     if (source !== 'backend') return
@@ -69,9 +73,9 @@ export default function Explorer() {
           🗂 Todos ({blocks.length})
         </button>
         {packages.map(pkg => {
-          const pkgId     = pkg.id
+          const pkgId      = pkg.id
           const childCount = blocks.filter(b => b.parentId === pkgId || b.parent_id === pkgId).length
-          const isActive  = selectedPkg === pkgId
+          const isActive   = selectedPkg === pkgId
           return (
             <button key={pkgId} onClick={() => setSelected(isActive ? null : pkgId)} style={{
               width: '100%', textAlign: 'left', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
