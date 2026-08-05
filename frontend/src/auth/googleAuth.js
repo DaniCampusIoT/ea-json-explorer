@@ -1,35 +1,24 @@
 /**
- * googleAuth.js — gestión de sesión con Google OAuth (JWT interno).
- * Sustituye a msalConfig.js / MSAL.
+ * Google OAuth2 helpers — frontend.
+ * Guarda el JWT interno en sessionStorage.
  */
 
-export const ALLOWED_DOMAIN = 'quandum.com'
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
+const TOKEN_KEY = 'ea_auth_token'
 
-const TOKEN_KEY = 'ea_jwt'
-
-/** Inicia el flujo OAuth redirigiendo al backend */
 export function loginWithGoogle() {
-  window.location.href = `${API_URL}/auth/google/login`
+  window.location.href = `${BACKEND}/auth/google/login`
 }
 
-/** Guarda el token que devuelve el callback */
-export function saveToken(token) {
-  sessionStorage.setItem(TOKEN_KEY, token)
-}
-
-/** Lee el token de sesión */
-export function getToken() {
-  return sessionStorage.getItem(TOKEN_KEY)
-}
-
-/** Elimina el token (logout) */
 export function logout() {
   sessionStorage.removeItem(TOKEN_KEY)
   window.location.href = '/'
 }
 
-/** Devuelve true si hay token activo y no ha expirado */
+export function getToken() {
+  return sessionStorage.getItem(TOKEN_KEY) || ''
+}
+
 export function isAuthenticated() {
   const token = getToken()
   if (!token) return false
@@ -41,7 +30,6 @@ export function isAuthenticated() {
   }
 }
 
-/** Parsea el payload del JWT sin verificar firma (solo frontend) */
 export function getUser() {
   const token = getToken()
   if (!token) return null
@@ -52,20 +40,28 @@ export function getUser() {
   }
 }
 
-/** Captura el token de la URL tras el callback y lo persiste */
+/**
+ * Lee ?token= o ?auth_error= de la URL tras el callback de Google.
+ * Limpia los parámetros de la URL en ambos casos.
+ * Devuelve { token } | { error, email } | null
+ */
 export function handleCallbackToken() {
   const params = new URLSearchParams(window.location.search)
-  const token = params.get('token')
-  const authError = params.get('auth_error')
+  const token  = params.get('token')
+  const error  = params.get('auth_error')
+  const email  = params.get('email') || ''
+
   if (token) {
-    saveToken(token)
-    // Limpia la URL
-    window.history.replaceState({}, '', '/')
-    return { ok: true }
+    sessionStorage.setItem(TOKEN_KEY, token)
+    // Limpia la URL sin recargar
+    window.history.replaceState({}, '', window.location.pathname)
+    return { token }
   }
-  if (authError) {
-    window.history.replaceState({}, '', '/')
-    return { ok: false, error: authError }
+
+  if (error) {
+    window.history.replaceState({}, '', window.location.pathname)
+    return { error, email }
   }
+
   return null
 }
