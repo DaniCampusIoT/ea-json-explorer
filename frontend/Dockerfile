@@ -3,11 +3,10 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 COPY package*.json .
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
-# URL del backend en Railway
 ENV VITE_API_URL=https://ea-explorer-backend-production.up.railway.app
 
 RUN npm run build
