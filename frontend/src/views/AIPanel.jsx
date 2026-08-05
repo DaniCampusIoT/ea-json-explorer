@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import MarkdownView from '../components/MarkdownView'
+import { SkeletonAIAnswer } from '../components/Skeleton'
 
 export default function AIPanel() {
   const [question, setQuestion] = useState('')
@@ -67,10 +68,10 @@ export default function AIPanel() {
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && sendQuestion()}
           placeholder="Escribe tu pregunta sobre el proyecto..."
-          style={{ flex: 1, padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: '0.5rem', fontSize: '0.875rem', background: 'var(--color-surface)' }}
+          style={{ flex: 1, padding: '0.625rem 0.875rem', border: '1px solid var(--color-border)', borderRadius: '0.5rem', fontSize: '0.875rem', background: 'var(--color-surface)', color: 'var(--color-text)' }}
         />
         <button className="btn btn-primary" onClick={() => sendQuestion()} disabled={loading}>
-          {loading ? '⏳' : 'Preguntar'}
+          {loading ? '...' : 'Preguntar'}
         </button>
       </div>
 
@@ -86,8 +87,11 @@ export default function AIPanel() {
         </div>
       )}
 
+      {/* Skeleton mientras carga */}
+      {loading && <SkeletonAIAnswer />}
+
       {/* Answer */}
-      {answer && (
+      {!loading && answer && (
         <div className="card" style={{ marginBottom: '1.5rem', background: 'var(--color-primary-highlight)' }}>
           <div className="card-title">🤖 Respuesta</div>
           <MarkdownView>{answer}</MarkdownView>

@@ -1,3 +1,6 @@
+/* ── Google Fonts: Inter ────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..400&display=swap');
+
 /* ── Design tokens ─────────────────────────────────────────────── */
 :root {
   --text-xs:   clamp(0.75rem,  0.7rem  + 0.25vw, 0.875rem);
@@ -34,6 +37,10 @@
 
   --font-body:    'Inter', sans-serif;
   --font-display: 'Inter', sans-serif;
+
+  /* Skeleton shimmer */
+  --skeleton-base:    #e8e5e0;
+  --skeleton-shine:   #f3f0ec;
 }
 
 [data-theme="dark"] {
@@ -50,6 +57,9 @@
   --color-primary-hover:  #227f8b;
   --color-error:          #d163a7;
   --color-error-highlight:#4c3d46;
+
+  --skeleton-base:  #2a2927;
+  --skeleton-shine: #333130;
 }
 
 /* ── Base reset ────────────────────────────────────────────────── */
@@ -65,6 +75,22 @@ body {
 }
 img, svg { display: block; max-width: 100%; }
 button { cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
+
+/* ── Skeleton loader ──────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base)  25%,
+    var(--skeleton-shine) 50%,
+    var(--skeleton-base)  75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 /* ── App shell ────────────────────────────────────────────────────── */
 .app-shell {
@@ -105,9 +131,21 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   &.active { background: color-mix(in oklch, var(--color-primary) 10%, var(--color-bg)); color: var(--color-primary); font-weight: 500; }
 }
 
+/* ── Theme toggle ────────────────────────────────────────────────── */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  transition: background var(--transition), color var(--transition);
+  &:hover { background: var(--color-surface-offset); color: var(--color-text); }
+}
+
 /* ── Header user area ────────────────────────────────────────────── */
 .header-user {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -160,9 +198,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   padding: var(--space-3);
   margin-bottom: var(--space-2);
 }
-.login-brand {
-  text-align: center;
-}
+.login-brand { text-align: center; }
 .login-title {
   font-size: 1.6rem;
   font-weight: 700;
@@ -218,15 +254,8 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   font-weight: 500;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   transition: background var(--transition), box-shadow var(--transition), border-color var(--transition);
-  &:hover {
-    background: #f8f9fa;
-    border-color: #c6c9cc;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-  }
-  &:active {
-    background: #f1f3f4;
-    box-shadow: none;
-  }
+  &:hover { background: #f8f9fa; border-color: #c6c9cc; box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+  &:active { background: #f1f3f4; box-shadow: none; }
 }
 
 /* ── Auth loading / denied ──────────────────────────────────────────── */
@@ -292,6 +321,25 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   border: 1px solid var(--color-border);
   &:hover { background: var(--color-divider); }
 }
+.btn-ghost {
+  background: var(--color-surface-offset);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  &:hover { background: var(--color-divider); color: var(--color-text); }
+}
+
+/* ── Empty state ─────────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-16);
+  color: var(--color-text-muted);
+  text-align: center;
+  font-size: var(--text-sm);
+}
 
 /* ── Responsive ───────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
@@ -320,8 +368,6 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   line-height: 1.75;
   color: var(--color-text);
 }
-
-/* Encabezados */
 .md-body h1,
 .md-body h2 {
   font-size: 1rem;
@@ -349,30 +395,15 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   margin-top: 0.75rem;
   margin-bottom: 0.25rem;
 }
-
-/* Párrafos y separadores */
 .md-body p { margin-bottom: 0.65rem; }
-.md-body hr {
-  border: none;
-  border-top: 1px solid var(--color-divider);
-  margin: 1rem 0;
-}
-
-/* Listas */
+.md-body hr { border: none; border-top: 1px solid var(--color-divider); margin: 1rem 0; }
 .md-body ul,
-.md-body ol {
-  padding-left: 1.25rem;
-  margin-bottom: 0.65rem;
-}
+.md-body ol { padding-left: 1.25rem; margin-bottom: 0.65rem; }
 .md-body li { margin-bottom: 0.2rem; }
 .md-body li > ul,
 .md-body li > ol { margin-top: 0.2rem; margin-bottom: 0; }
-
-/* Negritas e itálicas */
 .md-body strong { font-weight: 600; color: var(--color-text); }
 .md-body em { font-style: italic; color: var(--color-text-muted); }
-
-/* Código inline */
 .md-body code {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 0.8em;
@@ -382,8 +413,6 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   border-radius: 0.25rem;
   border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
-
-/* Bloques de código */
 .md-body pre {
   background: var(--color-surface-offset);
   border: 1px solid var(--color-border);
@@ -392,15 +421,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   overflow-x: auto;
   margin-bottom: 0.75rem;
 }
-.md-body pre code {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--color-text);
-  font-size: 0.82rem;
-}
-
-/* Citas */
+.md-body pre code { background: none; border: none; padding: 0; color: var(--color-text); font-size: 0.82rem; }
 .md-body blockquote {
   border-left: 3px solid var(--color-primary);
   padding: 0.4rem 0.875rem;
@@ -410,8 +431,6 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   color: var(--color-text-muted);
   font-style: italic;
 }
-
-/* ── Tablas GFM ──────────────────────────────────────────────────── */
 .md-body table {
   width: 100%;
   border-collapse: collapse;
@@ -421,9 +440,7 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   overflow: hidden;
   border: 1px solid var(--color-border);
 }
-.md-body thead tr {
-  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
-}
+.md-body thead tr { background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)); }
 .md-body thead th {
   text-align: left;
   padding: 0.5rem 0.75rem;
@@ -432,40 +449,15 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   border-bottom: 1.5px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
   white-space: nowrap;
 }
-.md-body tbody tr {
-  border-bottom: 1px solid var(--color-divider);
-  transition: background var(--transition);
-}
+.md-body tbody tr { border-bottom: 1px solid var(--color-divider); transition: background var(--transition); }
 .md-body tbody tr:last-child { border-bottom: none; }
-.md-body tbody tr:hover {
-  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
-}
-.md-body tbody td {
-  padding: 0.45rem 0.75rem;
-  vertical-align: top;
-  color: var(--color-text);
-}
+.md-body tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface)); }
+.md-body tbody td { padding: 0.45rem 0.75rem; vertical-align: top; color: var(--color-text); }
 .md-body tbody td:first-child { font-weight: 500; }
-
-/* Dark mode para tablas */
-[data-theme="dark"] .md-body thead tr {
-  background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface));
-}
-[data-theme="dark"] .md-body tbody tr:hover {
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
-}
-
-/* ── Variante compacta (historial) ──────────────────────────────── */
-.md-body.md-body--compact {
-  font-size: 0.78rem;
-  line-height: 1.6;
-}
+[data-theme="dark"] .md-body thead tr { background: color-mix(in srgb, var(--color-primary) 15%, var(--color-surface)); }
+[data-theme="dark"] .md-body tbody tr:hover { background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface)); }
+.md-body.md-body--compact { font-size: 0.78rem; line-height: 1.6; }
 .md-body.md-body--compact h2,
-.md-body.md-body--compact h3 {
-  font-size: 0.78rem;
-  margin-top: 0.5rem;
-}
+.md-body.md-body--compact h3 { font-size: 0.78rem; margin-top: 0.5rem; }
 .md-body.md-body--compact table { font-size: 0.75rem; }
-
-/* Primer elemento sin margen superior */
 .md-body > *:first-child { margin-top: 0; }
