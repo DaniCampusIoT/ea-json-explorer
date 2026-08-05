@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Fondo redondeado -->
+  <rect width="48" height="48" rx="12" fill="#0d1117"/>
+  <!-- Bloque TL (100%) -->
+  <rect x="8" y="8" width="14" height="14" rx="3" fill="#01a0a8"/>
+  <!-- Bloque TR (60%) -->
+  <rect x="26" y="8" width="14" height="14" rx="3" fill="#01a0a8" opacity="0.6"/>
+  <!-- Bloque BL (60%) -->
+  <rect x="8" y="26" width="14" height="14" rx="3" fill="#01a0a8" opacity="0.6"/>
+  <!-- Bloque BR (30%) -->
+  <rect x="26" y="26" width="14" height="14" rx="3" fill="#01a0a8" opacity="0.3"/>
+  <!-- Línea H central -->
+  <line x1="22" y1="15" x2="26" y2="15" stroke="#01a0a8" stroke-width="1.5" opacity="0.8"/>
+  <!-- Línea V central -->
+  <line x1="15" y1="22" x2="15" y2="26" stroke="#01a0a8" stroke-width="1.5" opacity="0.8"/>
+  <!-- Línea H inferior -->
+  <line x1="22" y1="33" x2="26" y2="33" stroke="#01a0a8" stroke-width="1.5" opacity="0.5"/>
+  <!-- Línea V derecha -->
+  <line x1="33" y1="22" x2="33" y2="26" stroke="#01a0a8" stroke-width="1.5" opacity="0.5"/>
+</svg>
