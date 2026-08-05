@@ -1,50 +1,56 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
 const STORAGE_KEY = 'arcana-recent-projects'
 const MAX_PROJECTS = 5
 
 /**
- * Guarda y recupera los últimos MAX_PROJECTS proyectos en localStorage.
- * Cada entrada: { name, date (ISO), stats, data (window.eaProject serializable) }
+ * Historial de proyectos recientes en localStorage.
+ * Cada entrada: { name, date (ISO), stats, project: { packages, blocks, connectors, ports, idMap } }
+ *
+ * IMPORTANTE: saveProject recibe el objeto project explicitamente en vez de
+ * leerlo de window.eaProject para evitar condiciones de carrera asincronas.
  */
 export function useProjectHistory() {
   const [history, setHistory] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []
-    } catch { return [] }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [] }
+    catch { return [] }
   })
 
-  function saveProject(name, stats) {
-    // Serializa la parte ligera del proyecto (sin raw completo para no saturar localStorage)
+  /**
+   * @param {string} name
+   * @param {object} stats   { packages, blocks, connectors, ports }
+   * @param {object} project { packages[], blocks[], connectors[], ports[], idMap{} }
+   */
+  function saveProject(name, stats, project) {
     const snapshot = {
       name,
       date: new Date().toISOString(),
       stats,
       project: {
-        packages:   window.eaProject?.packages   || [],
-        blocks:     window.eaProject?.blocks     || [],
-        connectors: window.eaProject?.connectors || [],
-        ports:      window.eaProject?.ports      || [],
-        idMap:      window.eaProject?.idMap      || {},
+        packages:   project.packages   || [],
+        blocks:     project.blocks     || [],
+        connectors: project.connectors || [],
+        ports:      project.ports      || [],
+        idMap:      project.idMap      || {},
       },
     }
     setHistory(prev => {
-      const filtered = prev.filter(p => p.name !== name)
-      const next = [snapshot, ...filtered].slice(0, MAX_PROJECTS)
+      const next = [snapshot, ...prev.filter(p => p.name !== name)].slice(0, MAX_PROJECTS)
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch {}
       return next
     })
   }
 
+  /** Restaura window.eaProject y devuelve la entrada. */
   function loadProject(entry) {
-    window.eaProject = entry.project
+    window.eaProject = { ...entry.project }
     return entry
   }
 
   function removeProject(name) {
     setHistory(prev => {
       const next = prev.filter(p => p.name !== name)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch {}
       return next
     })
   }

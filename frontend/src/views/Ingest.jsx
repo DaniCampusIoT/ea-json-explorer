@@ -5,6 +5,10 @@ import { useAI } from '../context/AIContext'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
+/**
+ * Parsea JSON de EA en el cliente.
+ * Devuelve { stats, project } — project es el objeto completo listo para guardar.
+ */
 function parseEAJson(raw) {
   let data
   try { data = JSON.parse(raw) } catch (e) {
@@ -17,9 +21,12 @@ function parseEAJson(raw) {
     const id   = el['_xmi:id']   || el['xmi:id']   || ''
     const name = el['_name']     || el['name']      || ''
     if (id) idMap[id] = { type, name, id, parentId }
-    if (type === 'uml:Package' || type === 'uml:Model') packages.push({ id, name, parentId })
-    else if (type === 'uml:Class' || type === 'uml:Component') blocks.push({ id, name, parentId })
-    else if (type === 'uml:Port') ports.push({ id, name, parentId })
+    if (type === 'uml:Package' || type === 'uml:Model')
+      packages.push({ id, name, parentId })
+    else if (type === 'uml:Class' || type === 'uml:Component')
+      blocks.push({ id, name, parentId })
+    else if (type === 'uml:Port')
+      ports.push({ id, name, parentId })
     else if (['uml:Connector','uml:Association','uml:Dependency','uml:InformationFlow','uml:Realization'].includes(type)) {
       const src = el['_supplier'] || el['supplier'] || (Array.isArray(el.end) ? el.end[0]?.['_role'] || '' : '')
       const tgt = el['_client']   || el['client']   || (Array.isArray(el.end) ? el.end[1]?.['_role'] || '' : '')
@@ -35,8 +42,50 @@ function parseEAJson(raw) {
   }
   const root = data?.XMI?.Model || data?.['xmi:XMI']?.['uml:Model'] || data?.Model || data
   if (root) walk(root)
-  window.eaProject = { packages, blocks, connectors, ports, idMap, raw: data }
-  return { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length }
+  const project = { packages, blocks, connectors, ports, idMap }
+  window.eaProject = { ...project, raw: data }
+  return {
+    stats:   { packages: packages.length, blocks: blocks.length, connectors: connectors.length, ports: ports.length },
+    project,
+  }
+}
+
+/**
+ * Tras un ingest exitoso al backend, descarga packages+blocks para
+ * reconstruir window.eaProject (necesario para historial y Explorer offline).
+ */
+async function fetchAndRebuildProject() {
+  try {
+    const [pkgRes, blkRes] = await Promise.all([
+      fetch('/api/packages'),
+      fetch('/api/blocks'),
+    ])
+    if (!pkgRes.ok || !blkRes.ok) return null
+    const packages = await pkgRes.json()
+    const blocks   = await blkRes.json()
+
+    // Reconstruir idMap y ports desde los datos del backend
+    const idMap = {}
+    const ports = []
+    for (const pkg of packages) {
+      if (pkg.id) idMap[pkg.id] = { type: 'uml:Package', name: pkg.name, id: pkg.id, parentId: pkg.parentId || pkg.parent_id || null }
+    }
+    for (const blk of blocks) {
+      if (blk.id) idMap[blk.id] = { type: 'uml:Class', name: blk.name, id: blk.id, parentId: blk.parentId || blk.parent_id || null }
+      if (blk.ports) {
+        for (const p of blk.ports) {
+          ports.push({ id: p.id, name: p.name, parentId: blk.id })
+          if (p.id) idMap[p.id] = { type: 'uml:Port', name: p.name, id: p.id, parentId: blk.id }
+        }
+      }
+    }
+
+    const project = { packages, blocks, connectors: [], ports, idMap }
+    window.eaProject = { ...project }
+    return project
+  } catch {
+    return null
+  }
 }
 
 function stripExt(filename) { return filename.replace(/\.[^.]+$/, '') }
@@ -70,46 +119,66 @@ export default function Ingest({ onLoaded }) {
       return
     }
     setLoading(true); setError(null); setResult(null)
-    const isXml = ext === 'xml' || ext === 'xmi'
+    const isXml     = ext === 'xml' || ext === 'xmi'
     const projectName = stripExt(file.name)
-    let stats = { packages: 0, blocks: 0, connectors: 0, ports: 0 }
+    let stats   = { packages: 0, blocks: 0, connectors: 0, ports: 0 }
+    let project = null   // objeto a guardar en historial
 
+    // ── Parseo cliente (solo JSON) ──────────────────────────────
     if (!isXml) {
       const text = await file.text()
-      try { stats = parseEAJson(text) } catch (err) {
+      try {
+        const parsed = parseEAJson(text)  // ya actualiza window.eaProject
+        stats   = parsed.stats
+        project = parsed.project
+      } catch (err) {
         setError(err.message); setLoading(false); return
       }
     }
 
+    // ── POST al backend ─────────────────────────────────────────
+    let backendOk = false
     try {
       const fd = new FormData()
       fd.append('file', file)
       const res = await fetch('/api/ingest', { method: 'POST', body: fd })
       if (res.ok) {
         const backendStats = await res.json()
-        setBackendOk(true); stats = backendStats
-        onLoaded({ ...backendStats, projectName })
+        stats     = backendStats
+        backendOk = true
+        onLoaded({ ...stats, projectName })
+
+        // Reconstruir window.eaProject desde la API del backend
+        const backendProject = await fetchAndRebuildProject()
+        if (backendProject) project = backendProject
+
       } else {
         const err = await res.json().catch(() => ({}))
         if (isXml) { setError(err.detail || 'Error al procesar el XML.'); setLoading(false); return }
-        setBackendOk(false); onLoaded({ ...stats, projectName })
+        onLoaded({ ...stats, projectName })
       }
     } catch {
       if (isXml) { setError('No se pudo conectar con el backend.'); setLoading(false); return }
-      setBackendOk(false); onLoaded({ ...stats, projectName })
+      onLoaded({ ...stats, projectName })
     }
 
-    saveProject(projectName, stats)
-    bumpProject()          // ← notifica a Explorer / Summary
+    setBackendOk(backendOk)
+
+    // ── Guardar en historial con el project correcto ────────────
+    if (project) {
+      saveProject(projectName, stats, project)
+    }
+
+    bumpProject()
     setResult(stats)
     setLoading(false)
   }
 
   function handleRecentLoad(entry) {
-    const e = loadProject(entry)  // restaura window.eaProject
-    onLoaded({ ...e.stats, projectName: e.name })
-    bumpProject()                 // ← fuerza re-render de Explorer / Summary
-    setResult(e.stats)
+    loadProject(entry)              // restaura window.eaProject desde el snapshot
+    onLoaded({ ...entry.stats, projectName: entry.name })
+    bumpProject()                   // fuerza re-render de Explorer / Summary
+    setResult(entry.stats)
     setBackendOk(null)
   }
 
