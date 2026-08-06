@@ -2,11 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# bust cache 2026-08-06
-COPY backend/requirements.txt .
+# bust cache 2026-08-06b
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ .
+COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
