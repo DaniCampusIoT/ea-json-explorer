@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/auth/**", "destination": "/auth/placeholder" },
     { "source": "**", "destination": "/index.html" }
   ],
   "headers": [
