@@ -1,12 +1,8 @@
 /**
- * Google OAuth2 helpers — frontend.
- * Usa __API_BASE__ inyectado por vite.config.js en tiempo de build.
+ * Google OAuth2 helpers
  */
 
-/* global __API_BASE__ */
-const BACKEND = (typeof __API_BASE__ !== 'undefined' && __API_BASE__)
-  ? __API_BASE__
-  : (import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || 'https://ea-explorer-backend-production.up.railway.app')
+const BACKEND = 'https://ea-explorer-backend-production.up.railway.app'
 
 const TOKEN_KEY = 'ea_auth_token'
 
