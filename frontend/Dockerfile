@@ -2,13 +2,10 @@ FROM node:20-slim AS builder
 
 WORKDIR /app
 
-COPY package*.json .
+COPY frontend/package*.json .
 RUN npm install --legacy-peer-deps
 
-COPY . .
-
-# bust cache 2026-08-05b
-ENV VITE_API_URL=https://ea-explorer-backend-production.up.railway.app
+COPY frontend/ .
 
 RUN npm run build
 
@@ -20,6 +17,6 @@ WORKDIR /app
 RUN npm install -g serve
 
 COPY --from=builder /app/dist ./dist
-COPY serve.json ./serve.json
+COPY frontend/serve.json ./serve.json
 
-CMD serve dist -l ${PORT:-3000} -c ../serve.json
+CMD ["serve", "dist", "-l", "3000", "-c", "../serve.json"]
