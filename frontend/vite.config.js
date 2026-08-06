@@ -1,11 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const BACKEND = process.env.VITE_API_URL
-             || process.env.VITE_BACKEND_URL
-             || 'https://ea-explorer-backend-production.up.railway.app'
+// URL hardcodeada: no depende de variables de entorno ni de Docker cache
+const BACKEND = 'https://ea-explorer-backend-production.up.railway.app'
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
@@ -21,4 +20,4 @@ export default defineConfig(({ mode }) => ({
   define: {
     __API_BASE__: JSON.stringify(BACKEND)
   }
-}))
+})
