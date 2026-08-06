@@ -1,11 +1,6 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
+import { BACKEND_URL } from '../config'
 
-/**
- * Contexto global compartido:
- * - project: objeto { packages, blocks, connectors, ports, idMap } — fuente de verdad única
- * - setProject: actualiza el proyecto y fuerza re-render en todos los consumidores
- * - historial de conversación IA (persistente entre rutas)
- */
 const AIContext = createContext(null)
 
 const EMPTY_PROJECT = { packages: [], blocks: [], connectors: [], ports: [], idMap: {} }
@@ -17,23 +12,23 @@ export function AIProvider({ children }) {
   const [loading, setLoading]      = useState(false)
   const [error,   setError]        = useState(null)
 
-  /**
-   * Actualiza el proyecto activo.
-   * Escribe también en window.eaProject para compatibilidad con código legacy.
-   */
   const setProject = useCallback((proj) => {
     const safe = proj || EMPTY_PROJECT
-    window.eaProject = { ...safe }   // compat legacy
+    window.eaProject = { ...safe }
     setProjectState(safe)
   }, [])
 
   async function ask(question) {
     if (!question.trim()) return
     setLoading(true); setAnswer(null); setError(null)
+    const token = sessionStorage.getItem('ea_auth_token') || ''
     try {
-      const res = await fetch('/api/ask', {
+      const res = await fetch(`${BACKEND_URL}/api/ask`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ question }),
       })
       if (!res.ok) {

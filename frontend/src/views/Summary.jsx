@@ -4,6 +4,7 @@ import MarkdownView from '../components/MarkdownView'
 import { Skeleton } from '../components/Skeleton'
 import { exportMarkdown, exportPDF, buildBlockMarkdown } from '../utils/exportUtils'
 import { useAI } from '../context/AIContext'
+import { BACKEND_URL } from '../config'
 
 function mdToHtml(md) {
   return md
@@ -19,14 +20,10 @@ function mdToHtml(md) {
     || `<p>${md}</p>`
 }
 
-// ── Conectividad ──────────────────────────────────────
 function BlockConnectivity({ blockId, project, onNavigate }) {
   const { connectors = [], idMap = {}, blocks = [], ports = [] } = project
 
-  // Los extremos de los conectores son IDs de puertos
-  // Obtener todos los puertos de este bloque
   const myPortIds = new Set(ports.filter(p => p.parentId === blockId).map(p => p.id))
-  // Incluir también el propio blockId por si conector va directo al bloque
   myPortIds.add(blockId)
 
   const related = connectors.filter(c =>
@@ -34,9 +31,8 @@ function BlockConnectivity({ blockId, project, onNavigate }) {
   )
   if (related.length === 0) return null
 
-  // Resolver ID (puerto o bloque) -> bloque
   function resolveBlock(id) {
-    if (id === blockId) return null  // es el propio
+    if (id === blockId) return null
     const entry = idMap[id]
     if (!entry) return null
     if (entry.type === 'uml:Port') {
@@ -48,7 +44,6 @@ function BlockConnectivity({ blockId, project, onNavigate }) {
            entry.id !== blockId ? entry : null
   }
 
-  // Deduplicar: pares únicos de (bloque peer, dirección)
   const outPeers = new Map(), inPeers = new Map()
   for (const c of related) {
     const isSrc = myPortIds.has(c.source)
@@ -99,6 +94,8 @@ export default function Summary() {
   const { blockId } = useParams()
   const navigate    = useNavigate()
   const { project } = useAI()
+  const token = sessionStorage.getItem('ea_auth_token') || ''
+  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {}
 
   const [block,          setBlock]          = useState(null)
   const [loadingBlock,   setLoadingBlock]   = useState(false)
@@ -114,7 +111,7 @@ export default function Summary() {
     if (!blockId) return
     setSummary(null); setPrompts(null); setImageData(null); setAiError(null)
     setLoadingBlock(true)
-    fetch(`/api/blocks/${blockId}`)
+    fetch(`${BACKEND_URL}/api/blocks/${blockId}`, { headers: authHeaders })
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setBlock(data))
       .catch(() => {
@@ -127,25 +124,27 @@ export default function Summary() {
   async function generateSummary() {
     setLoadingSummary(true); setAiError(null)
     try {
-      const res = await fetch(`/api/blocks/${blockId}/summary`)
+      const res = await fetch(`${BACKEND_URL}/api/blocks/${blockId}/summary`, { headers: authHeaders })
       if (!res.ok) throw new Error(await res.text())
       setSummary(await res.json())
     } catch { setAiError('No se pudo generar el resumen IA.') }
     finally  { setLoadingSummary(false) }
   }
+
   async function generatePrompt() {
     setLoadingPrompt(true); setAiError(null)
     try {
-      const res = await fetch(`/api/blocks/${blockId}/image-prompt`)
+      const res = await fetch(`${BACKEND_URL}/api/blocks/${blockId}/image-prompt`, { headers: authHeaders })
       if (!res.ok) throw new Error(await res.text())
       setPrompts([(await res.json()).prompt])
     } catch { setAiError('No se pudo generar el prompt visual.') }
     finally  { setLoadingPrompt(false) }
   }
+
   async function generateImage() {
     setLoadingImage(true); setAiError(null); setImageData(null)
     try {
-      const res = await fetch(`/api/blocks/${blockId}/image`)
+      const res = await fetch(`${BACKEND_URL}/api/blocks/${blockId}/image`, { headers: authHeaders })
       if (!res.ok) { const e = await res.json().catch(() => ({detail:res.statusText})); throw new Error(e.detail) }
       setImageData(await res.json())
     } catch (e) { setAiError(`No se pudo generar la imagen: ${e.message}`) }
