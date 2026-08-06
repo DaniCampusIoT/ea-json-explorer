@@ -5,6 +5,8 @@ WORKDIR /app
 COPY frontend/package*.json .
 RUN npm install --legacy-peer-deps
 
+# Bust cache para forzar rebuild del bundle
+ARG CACHEBUST=2026-08-06c
 COPY frontend/ .
 
 RUN npm run build
