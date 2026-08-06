@@ -2,15 +2,10 @@ import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useProjectHistory } from '../utils/useProjectHistory'
 import { useAI } from '../context/AIContext'
+import { BACKEND_URL } from '../config'
 
 const VALID_EXTS = ['json', 'txt', 'xml', 'xmi']
 
-/**
- * Normaliza un proyecto garantizando que TODOS los items tengan `parentId`.
- * El backend usa:  package.parent_id | block.package_id | port.owner_id
- * El parser JSON:  parentId en todo
- * Esta función unifica ambas fuentes.
- */
 function normalizeProject(proj) {
   if (!proj) return proj
 
@@ -20,11 +15,10 @@ function normalizeProject(proj) {
   }
 
   const packages   = (proj.packages   || []).map(p => normItem(p, 'parent_id'))
-  const blocks     = (proj.blocks     || []).map(b => normItem(b, 'package_id'))  // ← clave real del backend
+  const blocks     = (proj.blocks     || []).map(b => normItem(b, 'package_id'))
   const connectors = (proj.connectors || []).map(c => normItem(c, 'parent_id'))
-  const ports      = (proj.ports      || []).map(p => normItem(p, 'owner_id'))    // ← clave real del backend
+  const ports      = (proj.ports      || []).map(p => normItem(p, 'owner_id'))
 
-  // Reconstruir idMap completo con los parentId ya normalizados
   const idMap = {}
   for (const p of packages)
     if (p.id) idMap[p.id] = { type: 'uml:Package', name: p.name || '', id: p.id, parentId: p.parentId }
@@ -33,7 +27,6 @@ function normalizeProject(proj) {
   for (const p of ports)
     if (p.id) idMap[p.id] = { type: 'uml:Port',    name: p.name || '', id: p.id, parentId: p.parentId }
 
-  // Promover bloques-contenedor a packages si su parentId no está en packages
   const pkgIds   = new Set(packages.map(p => p.id))
   const blockIds = new Set(blocks.map(b => b.id))
   for (const pid of new Set(blocks.map(b => b.parentId).filter(Boolean))) {
@@ -97,13 +90,14 @@ function parseEAJson(raw) {
   }
 }
 
-async function fetchProjectFromBackend() {
+async function fetchProjectFromBackend(token) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
   try {
     const [pr, br, cr, por] = await Promise.all([
-      fetch('/api/packages'),
-      fetch('/api/blocks'),
-      fetch('/api/connectors').catch(() => ({ ok: false })),
-      fetch('/api/ports').catch(()      => ({ ok: false })),
+      fetch(`${BACKEND_URL}/api/packages`,   { headers }),
+      fetch(`${BACKEND_URL}/api/blocks`,     { headers }),
+      fetch(`${BACKEND_URL}/api/connectors`, { headers }).catch(() => ({ ok: false })),
+      fetch(`${BACKEND_URL}/api/ports`,      { headers }).catch(() => ({ ok: false })),
     ])
     if (!pr.ok || !br.ok) return null
 
@@ -112,7 +106,6 @@ async function fetchProjectFromBackend() {
     const connsRaw    = cr.ok  ? await cr.json().catch(() => []) : []
     const portsRaw    = por.ok ? await por.json().catch(() => []) : []
 
-    // Extraer puertos anidados en bloques si /api/ports no existe
     const portsFromBlocks = []
     for (const b of blocksRaw) {
       const bid = b.id || b.xmi_id
@@ -125,7 +118,6 @@ async function fetchProjectFromBackend() {
       ? portsRaw.map(p => ({ ...p, id: p.id || p.xmi_id }))
       : portsFromBlocks
 
-    // Normalizar conectores (backend usa source_id/target_id)
     const connectors = (connsRaw || []).map(c => ({
       id:       c.id || c.xmi_id || '',
       name:     c.name || c.label || '',
@@ -185,13 +177,20 @@ export default function Ingest({ onLoaded }) {
       catch (err) { setError(err.message); setLoading(false); return }
     }
 
+    const token = sessionStorage.getItem('ea_auth_token') || ''
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch('/api/ingest', { method: 'POST', body: fd })
+      const res = await fetch(`${BACKEND_URL}/api/ingest`, {
+        method: 'POST',
+        body: fd,
+        headers,
+      })
       if (res.ok) {
         stats = await res.json(); backendOk = true
         onLoaded({ ...stats, projectName: projName })
-        const bp = await fetchProjectFromBackend()
+        const bp = await fetchProjectFromBackend(token)
         if (bp) project = bp
       } else {
         const err = await res.json().catch(() => ({}))
