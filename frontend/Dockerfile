@@ -17,6 +17,5 @@ WORKDIR /app
 RUN npm install -g serve
 
 COPY --from=builder /app/dist ./dist
-COPY frontend/serve.json ./serve.json
 
-CMD ["serve", "dist", "-l", "3000", "-c", "../serve.json"]
+CMD ["serve", "dist", "-l", "3000", "--single"]
